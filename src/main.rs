@@ -60,6 +60,44 @@ impl Query {
     async fn hello(&self) -> &str {
         "Hello from GraphQL!"
     }
+
+    /// Returns a list of sample notes for testing.
+    ///
+    /// This demonstrates:
+    /// - GraphQL list types: [Note!]!
+    /// - Complex return types with multiple fields
+    /// - Field selection capabilities
+    /// - Static data serving (will be dynamic in later days)
+    ///
+    /// The return type [Note!]! means:
+    /// - Outer []: This is a list/array
+    /// - Note: Each item in the list is a Note type
+    /// - Inner !: Each Note in the list is non-null
+    /// - Outer !: The list itself is non-null (but can be empty)
+    async fn notes(&self) -> Vec<Note> {
+        vec![
+            Note {
+                id: 1,
+                title: "Welcome to GraphQL".to_string(),
+                content: "This is your first note! GraphQL allows you to query exactly the fields you need.".to_string(),
+            },
+            Note {
+                id: 2, 
+                title: "Learning Rust".to_string(),
+                content: "Rust's type system helps catch errors at compile time, making GraphQL APIs more reliable.".to_string(),
+            },
+            Note {
+                id: 3,
+                title: "async-graphql Features".to_string(), 
+                content: "The async-graphql crate provides powerful features like field selection, introspection, and automatic schema generation.".to_string(),
+            },
+            Note {
+                id: 4,
+                title: "Field Selection".to_string(),
+                content: "With GraphQL, clients can request only the fields they need: id, title, content, or any combination!".to_string(),
+            },
+        ]
+    }
 }
 
 /// Our complete GraphQL schema type.
@@ -97,37 +135,93 @@ async fn graphiql() -> Html<&'static str> {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GraphQL Test Interface</title>
+    <title>GraphQL Test Interface - Day 2</title>
     <style>
-        body { font-family: monospace; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        textarea { width: 100%; height: 200px; margin: 10px 0; }
-        button { padding: 10px 20px; background: #0066cc; color: white; border: none; cursor: pointer; }
-        .result { background: #f5f5f5; padding: 15px; margin-top: 20px; white-space: pre-wrap; }
+        body { font-family: monospace; padding: 20px; background: #f8f9fa; }
+        .container { max-width: 900px; margin: 0 auto; }
+        textarea { width: 100%; height: 250px; margin: 10px 0; font-family: monospace; font-size: 14px; }
+        button { padding: 10px 20px; background: #0066cc; color: white; border: none; cursor: pointer; margin: 5px; }
+        button:hover { background: #0052a3; }
+        .result { background: #fff; padding: 15px; margin-top: 20px; white-space: pre-wrap; border: 1px solid #ddd; border-radius: 4px; }
+        .examples { background: #fff; padding: 15px; margin: 20px 0; border-radius: 4px; border: 1px solid #ddd; }
+        .examples h4 { margin-top: 0; color: #333; }
+        code { background: #f1f3f4; padding: 2px 4px; border-radius: 3px; }
+        .query-btn { background: #28a745; font-size: 12px; padding: 5px 10px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>GraphQL Test Interface</h1>
-        <p>Your GraphQL server is running! 🚀</p>
+        <h1>GraphQL Test Interface - Day 2</h1>
+        <p>Your GraphQL server is running with Notes support! 🚀</p>
         
         <h3>Test Query:</h3>
         <textarea id="query" placeholder="Enter your GraphQL query...">query {
-  hello
+  notes {
+    id
+    title
+    content
+  }
 }</textarea>
         
         <button onclick="executeQuery()">Execute Query</button>
+        <button class="query-btn" onclick="loadQuery('hello')">Hello Query</button>
+        <button class="query-btn" onclick="loadQuery('notes')">All Notes</button>
+        <button class="query-btn" onclick="loadQuery('notesSimple')">Notes (ID + Title)</button>
+        <button class="query-btn" onclick="loadQuery('combined')">Combined Query</button>
         
         <div class="result" id="result">Results will appear here...</div>
         
-        <h3>Example Queries:</h3>
-        <ul>
-            <li><code>{ hello }</code> - Basic hello query</li>
-            <li><code>{ __schema { queryType { name } } }</code> - Schema introspection</li>
-        </ul>
+        <div class="examples">
+            <h4>📋 Day 2 Example Queries:</h4>
+            <ul>
+                <li><code>{ hello }</code> - Basic hello query</li>
+                <li><code>{ notes { id title } }</code> - All notes with just ID and title</li>
+                <li><code>{ notes { title content } }</code> - All notes with title and content</li>
+                <li><code>{ hello notes { id title } }</code> - Multiple queries in one request</li>
+                <li><code>{ __schema { queryType { name } } }</code> - Schema introspection</li>
+            </ul>
+            
+            <h4>🎯 GraphQL Concepts Demonstrated:</h4>
+            <ul>
+                <li><strong>List Types:</strong> [Note!]! returns an array of notes</li>
+                <li><strong>Field Selection:</strong> Choose which fields to return</li>
+                <li><strong>Complex Types:</strong> Note type with multiple fields</li>
+                <li><strong>Multiple Queries:</strong> Combine different queries</li>
+            </ul>
+        </div>
     </div>
 
     <script>
+        const queries = {
+            hello: `query {
+  hello
+}`,
+            notes: `query {
+  notes {
+    id
+    title
+    content
+  }
+}`,
+            notesSimple: `query {
+  notes {
+    id
+    title
+  }
+}`,
+            combined: `query {
+  hello
+  notes {
+    id
+    title
+  }
+}`
+        };
+
+        function loadQuery(type) {
+            document.getElementById('query').value = queries[type];
+        }
+
         async function executeQuery() {
             const query = document.getElementById('query').value;
             const resultDiv = document.getElementById('result');
