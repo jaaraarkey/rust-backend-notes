@@ -274,7 +274,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Authors
 
-- **Your Name** - *Initial work* - [YourGitHub](https://github.com/yourusername)
+- ** Oleg Dyachenko aka jaar ** - *Initial work* - [jaar](https://github.com/jaaraarkey)
 
 ## 🙏 Acknowledgments
 
