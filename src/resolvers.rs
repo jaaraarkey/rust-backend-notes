@@ -18,7 +18,7 @@
 //! ## 🎯 Design Patterns
 //!
 //! ### Error Handling
-//! - Optional return types (`Option<Note>`) for graceful missing data handling
+//! - Optional return types for graceful missing data handling
 //! - Type-safe argument validation via GraphQL schema
 //! - Detailed documentation for each resolver method
 //!
@@ -60,6 +60,11 @@ impl Query {
     /// - Verifying the server is running
     /// - Testing GraphQL client connections
     /// - Basic health checks
+    ///
+    /// ## GraphQL Schema
+    /// ```graphql
+    /// hello: String!
+    /// ```
     async fn hello(&self) -> &str {
         "Hello from GraphQL with UUID support!"
     }
@@ -67,16 +72,32 @@ impl Query {
     /// Returns a list of sample notes for testing.
     ///
     /// This demonstrates:
-    /// - GraphQL list types: `[Note!]!`
+    /// - GraphQL list types with non-null constraints
     /// - Complex return types with multiple fields
     /// - Field selection capabilities
     /// - Static data serving (will be dynamic in later days)
     ///
-    /// The return type `[Note!]!` means:
-    /// - Outer `[]`: This is a list/array
+    /// ## GraphQL Schema
+    /// ```graphql
+    /// notes: [Note!]!
+    /// ```
+    ///
+    /// The return type means:
+    /// - `[]`: This is a list/array
     /// - [`Note`]: Each item in the list is a Note type
     /// - Inner `!`: Each [`Note`] in the list is non-null
     /// - Outer `!`: The list itself is non-null (but can be empty)
+    ///
+    /// ## Example Usage
+    /// ```graphql
+    /// query {
+    ///   notes {
+    ///     id
+    ///     title
+    ///     content
+    ///   }
+    /// }
+    /// ```
     async fn notes(&self) -> Vec<Note> {
         get_sample_notes()
     }
@@ -84,10 +105,15 @@ impl Query {
     /// Returns a single note by UUID, or None if not found.
     ///
     /// This demonstrates:
-    /// - GraphQL arguments: `note(id: String!)`
+    /// - GraphQL arguments with required types
     /// - UUID-based identification
-    /// - Optional return types: [`Note`] vs `Note!`
+    /// - Optional return types for missing data
     /// - Error handling for missing data
+    ///
+    /// ## GraphQL Schema
+    /// ```graphql
+    /// note(id: String!): Note
+    /// ```
     ///
     /// # Arguments
     /// - `id`: The UUID of the note to retrieve
@@ -96,9 +122,14 @@ impl Query {
     /// - `Some(`[`Note`]`)` if found
     /// - `None` if no note exists with the given UUID
     ///
-    /// # GraphQL Schema
+    /// ## Example Usage
     /// ```graphql
-    /// note(id: String!): Note
+    /// query {
+    ///   note(id: "550e8400-e29b-41d4-a716-446655440001") {
+    ///     title
+    ///     content
+    ///   }
+    /// }
     /// ```
     async fn note(&self, id: String) -> Option<Note> {
         let notes = get_sample_notes();
@@ -124,12 +155,12 @@ impl Mutation {
     /// - **Type Safety**: Compile-time validation of input structure
     /// - **Return Values**: Returns the complete created [`Note`] object
     ///
-    /// ## 📊 GraphQL Schema
+    /// ## GraphQL Schema
     /// ```graphql
     /// createNote(input: CreateNoteInput!): Note!
     /// ```
     ///
-    /// ## 💡 Usage Examples
+    /// ## Usage Examples
     ///
     /// ### Basic Creation
     /// ```graphql
