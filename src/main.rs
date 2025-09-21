@@ -24,19 +24,19 @@ use axum::{
     extract::Extension,
     response::Html,
     routing::{get, post},
-    Router,
-    Server, // Add Server import
+    Router, Server,
 };
-use std::net::SocketAddr; // Add this import
+use std::net::SocketAddr;
+use uuid::Uuid; // Add UUID import
 
-/// Represents a note in our application.
+/// Represents a note in our application with UUID-based unique identification.
 ///
-/// Notes have a unique ID, title, and content. This struct is automatically
-/// converted to a GraphQL type thanks to the `SimpleObject` derive macro.
+/// Notes have a UUID, title, and content. UUIDs are globally unique identifiers
+/// that are much more robust than simple integer IDs.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct Note {
-    /// Unique identifier for the note
-    pub id: i32,
+    /// Unique identifier for the note (UUID format)
+    pub id: String, // Changed from i32 to String to store UUID
     /// The note's title
     pub title: String,
     /// The note's content/body
@@ -52,24 +52,24 @@ pub struct Query;
 fn get_sample_notes() -> Vec<Note> {
     vec![
         Note {
-            id: 1,
+            id: "550e8400-e29b-41d4-a716-446655440001".to_string(),  // Example UUID
             title: "Welcome to GraphQL".to_string(),
-            content: "This is your first note! GraphQL allows you to query exactly the fields you need.".to_string(),
+            content: "This is your first note! GraphQL allows you to query exactly the fields you need. Now with UUID support!".to_string(),
         },
         Note {
-            id: 2, 
+            id: "550e8400-e29b-41d4-a716-446655440002".to_string(),
             title: "Learning Rust".to_string(),
-            content: "Rust's type system helps catch errors at compile time, making GraphQL APIs more reliable.".to_string(),
+            content: "Rust's type system helps catch errors at compile time, making GraphQL APIs more reliable. UUIDs provide better data integrity.".to_string(),
         },
         Note {
-            id: 3,
+            id: "550e8400-e29b-41d4-a716-446655440003".to_string(),
             title: "async-graphql Features".to_string(), 
-            content: "The async-graphql crate provides powerful features like field selection, introspection, and automatic schema generation.".to_string(),
+            content: "The async-graphql crate provides powerful features like field selection, introspection, and automatic schema generation with UUID support.".to_string(),
         },
         Note {
-            id: 4,
-            title: "Field Selection".to_string(),
-            content: "With GraphQL, clients can request only the fields they need: id, title, content, or any combination!".to_string(),
+            id: "550e8400-e29b-41d4-a716-446655440004".to_string(),
+            title: "UUID Benefits".to_string(),
+            content: "UUIDs are globally unique, don't reveal sequence information, and work great in distributed systems!".to_string(),
         },
     ]
 }
@@ -83,7 +83,7 @@ impl Query {
     /// - Testing GraphQL client connections
     /// - Basic health checks
     async fn hello(&self) -> &str {
-        "Hello from GraphQL!"
+        "Hello from GraphQL with UUID support!"
     }
 
     /// Returns a list of sample notes for testing.
@@ -103,30 +103,26 @@ impl Query {
         get_sample_notes()
     }
 
-    /// Returns a single note by ID, or None if not found.
+    /// Returns a single note by UUID, or None if not found.
     ///
     /// This demonstrates:
-    /// - GraphQL arguments: note(id: Int!)
+    /// - GraphQL arguments: note(id: String!)
+    /// - UUID-based identification
     /// - Optional return types: Note vs Note!
     /// - Error handling for missing data
-    /// - Input validation
     ///
     /// Arguments:
-    /// - id: The unique identifier of the note to retrieve
+    /// - id: The UUID of the note to retrieve
     ///
     /// Returns:
     /// - Some(Note) if found
-    /// - None if no note exists with the given ID
+    /// - None if no note exists with the given UUID
     ///
     /// GraphQL Schema:
     /// ```graphql
-    /// note(id: Int!): Note
+    /// note(id: String!): Note
     /// ```
-    ///
-    /// The return type `Note` (without !) means:
-    /// - The field can return null if no note is found
-    /// - This is different from `Note!` which would require a note to always exist
-    async fn note(&self, id: i32) -> Option<Note> {
+    async fn note(&self, id: String) -> Option<Note> {
         let notes = get_sample_notes();
         notes.into_iter().find(|note| note.id == id)
     }
@@ -167,7 +163,7 @@ async fn graphiql() -> Html<&'static str> {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GraphQL Test Interface - Day 3</title>
+    <title>GraphQL Test Interface - Day 3 Enhanced (UUID)</title>
     <style>
         body { font-family: monospace; padding: 20px; background: #f8f9fa; }
         .container { max-width: 900px; margin: 0 auto; }
@@ -177,20 +173,20 @@ async fn graphiql() -> Html<&'static str> {
         .result { background: #fff; padding: 15px; margin-top: 20px; white-space: pre-wrap; border: 1px solid #ddd; border-radius: 4px; max-height: 400px; overflow-y: auto; }
         .examples { background: #fff; padding: 15px; margin: 20px 0; border-radius: 4px; border: 1px solid #ddd; }
         .examples h4 { margin-top: 0; color: #333; }
-        code { background: #f1f3f4; padding: 2px 4px; border-radius: 3px; }
+        code { background: #f1f3f4; padding: 2px 4px; border-radius: 3px; font-size: 12px; }
         .query-btn { background: #28a745; font-size: 12px; padding: 5px 10px; }
         .error-btn { background: #dc3545; }
-        .combined-btn { background: #6f42c1; }
+        .uuid-btn { background: #17a2b8; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>GraphQL Test Interface - Day 3</h1>
-        <p>Your GraphQL server now supports single note queries with error handling! 🚀</p>
+        <h1>GraphQL Test Interface - Day 3 Enhanced (UUID)</h1>
+        <p>Your GraphQL server now supports UUID-based unique identifiers! 🚀</p>
         
         <h3>Test Query:</h3>
         <textarea id="query" placeholder="Enter your GraphQL query...">query {
-  note(id: 1) {
+  note(id: "550e8400-e29b-41d4-a716-446655440001") {
     id
     title
     content
@@ -202,43 +198,50 @@ async fn graphiql() -> Html<&'static str> {
         <h4>Quick Test Buttons:</h4>
         <button class="query-btn" onclick="loadQuery('hello')">Hello</button>
         <button class="query-btn" onclick="loadQuery('allNotes')">All Notes</button>
-        <button class="query-btn" onclick="loadQuery('noteExists')">Note #1</button>
-        <button class="query-btn" onclick="loadQuery('noteExists2')">Note #3</button>
-        <button class="error-btn" onclick="loadQuery('noteNotFound')">Note #999 (Error)</button>
-        <button class="combined-btn" onclick="loadQuery('combined')">Combined Query</button>
-        <button class="query-btn" onclick="loadQuery('fieldSelection')">Field Selection</button>
+        <button class="uuid-btn" onclick="loadQuery('noteUuid1')">Note UUID #1</button>
+        <button class="uuid-btn" onclick="loadQuery('noteUuid2')">Note UUID #2</button>
+        <button class="error-btn" onclick="loadQuery('noteNotFound')">Invalid UUID</button>
+        <button class="query-btn" onclick="loadQuery('combined')">Combined Query</button>
         
         <div class="result" id="result">Results will appear here...</div>
         
         <div class="examples">
-            <h4>📋 Day 3 Example Queries:</h4>
+            <h4>📋 Day 3 Enhanced Example Queries (UUID):</h4>
             <ul>
-                <li><code>{ note(id: 1) { id title } }</code> - Get note #1 with selected fields</li>
-                <li><code>{ note(id: 999) { id title } }</code> - Query non-existent note (returns null)</li>
-                <li><code>{ note(id: 2) { title content } }</code> - Get note #2 without ID field</li>
-                <li><code>{ notes { id title } note(id: 1) { content } }</code> - Combined list + single query</li>
+                <li><code>{ note(id: "550e8400-e29b-41d4-a716-446655440001") { title } }</code> - Get note by UUID</li>
+                <li><code>{ note(id: "invalid-uuid") { id title } }</code> - Query with invalid UUID (returns null)</li>
+                <li><code>{ notes { id title } }</code> - List all notes with UUID IDs</li>
+                <li><code>{ hello notes { id } }</code> - Combined query with UUIDs</li>
             </ul>
             
-            <h4>🎯 Day 3 GraphQL Concepts:</h4>
+            <h4>🎯 UUID Benefits:</h4>
             <ul>
-                <li><strong>Arguments:</strong> <code>note(id: Int!)</code> requires an ID parameter</li>
-                <li><strong>Optional Types:</strong> <code>Note</code> can return null, <code>Note!</code> cannot</li>
-                <li><strong>Error Handling:</strong> Graceful handling of missing data</li>
-                <li><strong>Input Validation:</strong> Type-safe argument handling</li>
+                <li><strong>Globally Unique:</strong> No ID collisions across systems</li>
+                <li><strong>Non-Sequential:</strong> Doesn't reveal creation order or count</li>
+                <li><strong>Distributed Safe:</strong> Works in microservices and replicated systems</li>
+                <li><strong>Future-Proof:</strong> Ready for database integration and scaling</li>
             </ul>
             
-            <h4>📊 Current Schema (Day 3):</h4>
+            <h4>📊 Enhanced Schema (Day 3 + UUID):</h4>
             <pre>type Query {
   hello: String!
   notes: [Note!]!
-  note(id: Int!): Note  # Note: can return null
+  note(id: String!): Note  # Now accepts UUID strings
 }
 
 type Note {
-  id: Int!
+  id: String!     # UUID format: "550e8400-e29b-41d4-a716-446655440001"
   title: String!
   content: String!
 }</pre>
+
+            <h4>🔢 Sample UUIDs for Testing:</h4>
+            <ul>
+                <li><code>550e8400-e29b-41d4-a716-446655440001</code> - Welcome to GraphQL</li>
+                <li><code>550e8400-e29b-41d4-a716-446655440002</code> - Learning Rust</li>
+                <li><code>550e8400-e29b-41d4-a716-446655440003</code> - async-graphql Features</li>
+                <li><code>550e8400-e29b-41d4-a716-446655440004</code> - UUID Benefits</li>
+            </ul>
         </div>
     </div>
 
@@ -254,21 +257,21 @@ type Note {
     content
   }
 }`,
-            noteExists: `query {
-  note(id: 1) {
+            noteUuid1: `query {
+  note(id: "550e8400-e29b-41d4-a716-446655440001") {
     id
     title
     content
   }
 }`,
-            noteExists2: `query {
-  note(id: 3) {
+            noteUuid2: `query {
+  note(id: "550e8400-e29b-41d4-a716-446655440002") {
     id
     title
   }
 }`,
             noteNotFound: `query {
-  note(id: 999) {
+  note(id: "invalid-uuid-string") {
     id
     title
     content
@@ -276,18 +279,12 @@ type Note {
 }`,
             combined: `query {
   hello
-  note(id: 1) {
+  note(id: "550e8400-e29b-41d4-a716-446655440001") {
     title
   }
   notes {
     id
     title
-  }
-}`,
-            fieldSelection: `query {
-  note(id: 2) {
-    title
-    content
   }
 }`
         };
