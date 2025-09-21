@@ -18,7 +18,7 @@
 //!
 //! Then visit http://127.0.0.1:8000 for the GraphiQL playground.
 
-use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
+use async_graphql::{EmptySubscription, InputObject, Object, Schema, SimpleObject}; // Add EmptySubscription
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     extract::Extension,
@@ -27,7 +27,20 @@ use axum::{
     Router, Server,
 };
 use std::net::SocketAddr;
-use uuid::Uuid; // Add UUID import
+use uuid::Uuid;
+
+/// Input type for creating a new note.
+///
+/// This demonstrates GraphQL Input types, which are used for complex arguments
+/// in mutations and queries. Input types are different from regular types -
+/// they can only be used as arguments, not return values.
+#[derive(InputObject)]
+pub struct CreateNoteInput {
+    /// The title of the new note (required)
+    pub title: String,
+    /// The content/body of the new note (required)  
+    pub content: String,
+}
 
 /// Represents a note in our application with UUID-based unique identification.
 ///
@@ -128,12 +141,51 @@ impl Query {
     }
 }
 
+/// The root Mutation type for our GraphQL schema.
+///
+/// This contains all the "write" operations that clients can perform.
+/// Each method in this impl block becomes a field in the GraphQL Mutation type.
+pub struct Mutation;
+
+#[Object]
+impl Mutation {
+    /// Creates a new note with auto-generated UUID.
+    ///
+    /// This demonstrates:
+    /// - GraphQL mutations (write operations)
+    /// - Input types for complex arguments
+    /// - UUID generation for unique identifiers
+    /// - Returning the created object
+    ///
+    /// Arguments:
+    /// - input: CreateNoteInput containing title and content
+    ///
+    /// Returns:
+    /// - The newly created Note with generated UUID
+    ///
+    /// GraphQL Schema:
+    /// ```graphql
+    /// createNote(input: CreateNoteInput!): Note!
+    /// ```
+    async fn create_note(&self, input: CreateNoteInput) -> Note {
+        // Generate a new UUID for this note
+        let new_id = Uuid::new_v4().to_string();
+
+        // Create and return the new note
+        Note {
+            id: new_id,
+            title: input.title,
+            content: input.content,
+        }
+    }
+}
+
 /// Our complete GraphQL schema type.
 ///
 /// This combines Query (read operations), Mutation (write operations),
 /// and Subscription (real-time operations) into a single schema.
-/// Currently we only have Query implemented.
-type MySchema = Schema<Query, EmptyMutation, EmptySubscription>;
+/// Now we have both Query and Mutation implemented!
+type MySchema = Schema<Query, Mutation, EmptySubscription>;
 
 /// Handles incoming GraphQL requests.
 ///
@@ -163,11 +215,11 @@ async fn graphiql() -> Html<&'static str> {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GraphQL Test Interface - Day 3 Enhanced (UUID)</title>
+    <title>GraphQL Test Interface - Day 4 (Mutations)</title>
     <style>
         body { font-family: monospace; padding: 20px; background: #f8f9fa; }
         .container { max-width: 900px; margin: 0 auto; }
-        textarea { width: 100%; height: 300px; margin: 10px 0; font-family: monospace; font-size: 14px; }
+        textarea { width: 100%; height: 350px; margin: 10px 0; font-family: monospace; font-size: 14px; }
         button { padding: 10px 20px; background: #0066cc; color: white; border: none; cursor: pointer; margin: 5px; }
         button:hover { background: #0052a3; }
         .result { background: #fff; padding: 15px; margin-top: 20px; white-space: pre-wrap; border: 1px solid #ddd; border-radius: 4px; max-height: 400px; overflow-y: auto; }
@@ -175,72 +227,89 @@ async fn graphiql() -> Html<&'static str> {
         .examples h4 { margin-top: 0; color: #333; }
         code { background: #f1f3f4; padding: 2px 4px; border-radius: 3px; font-size: 12px; }
         .query-btn { background: #28a745; font-size: 12px; padding: 5px 10px; }
-        .error-btn { background: #dc3545; }
+        .mutation-btn { background: #fd7e14; }
         .uuid-btn { background: #17a2b8; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>GraphQL Test Interface - Day 3 Enhanced (UUID)</h1>
-        <p>Your GraphQL server now supports UUID-based unique identifiers! 🚀</p>
+        <h1>GraphQL Test Interface - Day 4 (Mutations)</h1>
+        <p>Your GraphQL server now supports creating notes with mutations! ✨</p>
         
-        <h3>Test Query:</h3>
-        <textarea id="query" placeholder="Enter your GraphQL query...">query {
-  note(id: "550e8400-e29b-41d4-a716-446655440001") {
+        <h3>Test Query/Mutation:</h3>
+        <textarea id="query" placeholder="Enter your GraphQL query or mutation...">mutation {
+  createNote(input: {
+    title: "My New Note"
+    content: "This note was created via GraphQL mutation!"
+  }) {
     id
     title
     content
   }
 }</textarea>
         
-        <button onclick="executeQuery()">Execute Query</button>
+        <button onclick="executeQuery()">Execute Query/Mutation</button>
         
         <h4>Quick Test Buttons:</h4>
         <button class="query-btn" onclick="loadQuery('hello')">Hello</button>
         <button class="query-btn" onclick="loadQuery('allNotes')">All Notes</button>
         <button class="uuid-btn" onclick="loadQuery('noteUuid1')">Note UUID #1</button>
-        <button class="uuid-btn" onclick="loadQuery('noteUuid2')">Note UUID #2</button>
-        <button class="error-btn" onclick="loadQuery('noteNotFound')">Invalid UUID</button>
-        <button class="query-btn" onclick="loadQuery('combined')">Combined Query</button>
+        <button class="mutation-btn" onclick="loadQuery('createNote')">Create Note</button>
+        <button class="mutation-btn" onclick="loadQuery('createLongNote')">Create Long Note</button>
+        <button class="query-btn" onclick="loadQuery('introspection')">Schema Info</button>
         
         <div class="result" id="result">Results will appear here...</div>
         
         <div class="examples">
-            <h4>📋 Day 3 Enhanced Example Queries (UUID):</h4>
+            <h4>📋 Day 4 Example Operations:</h4>
+            
+            <h5>🔍 Queries (Read):</h5>
             <ul>
-                <li><code>{ note(id: "550e8400-e29b-41d4-a716-446655440001") { title } }</code> - Get note by UUID</li>
-                <li><code>{ note(id: "invalid-uuid") { id title } }</code> - Query with invalid UUID (returns null)</li>
-                <li><code>{ notes { id title } }</code> - List all notes with UUID IDs</li>
-                <li><code>{ hello notes { id } }</code> - Combined query with UUIDs</li>
+                <li><code>{ notes { id title } }</code> - List all notes</li>
+                <li><code>{ note(id: "uuid-here") { title content } }</code> - Get single note</li>
             </ul>
             
-            <h4>🎯 UUID Benefits:</h4>
+            <h5>✨ Mutations (Write):</h5>
             <ul>
-                <li><strong>Globally Unique:</strong> No ID collisions across systems</li>
-                <li><strong>Non-Sequential:</strong> Doesn't reveal creation order or count</li>
-                <li><strong>Distributed Safe:</strong> Works in microservices and replicated systems</li>
-                <li><strong>Future-Proof:</strong> Ready for database integration and scaling</li>
+                <li><code>mutation { createNote(input: {title: "Test", content: "Content"}) { id } }</code></li>
+                <li><code>mutation { createNote(input: {title: "Long Title Here", content: "Much longer content here..."}) { id title } }</code></li>
             </ul>
             
-            <h4>📊 Enhanced Schema (Day 3 + UUID):</h4>
+            <h4>🎯 Day 4 GraphQL Concepts:</h4>
+            <ul>
+                <li><strong>Mutations:</strong> Write operations that modify data</li>
+                <li><strong>Input Types:</strong> Structured arguments for complex data</li>
+                <li><strong>UUID Generation:</strong> Automatic unique ID creation</li>
+                <li><strong>Input Validation:</strong> Type-safe argument processing</li>
+            </ul>
+            
+            <h4>📊 Updated Schema (Day 4):</h4>
             <pre>type Query {
   hello: String!
   notes: [Note!]!
-  note(id: String!): Note  # Now accepts UUID strings
+  note(id: String!): Note
+}
+
+type Mutation {
+  createNote(input: CreateNoteInput!): Note!
+}
+
+input CreateNoteInput {
+  title: String!
+  content: String!
 }
 
 type Note {
-  id: String!     # UUID format: "550e8400-e29b-41d4-a716-446655440001"
+  id: String!
   title: String!
   content: String!
 }</pre>
 
-            <h4>🔢 Sample UUIDs for Testing:</h4>
+            <h4>💡 Mutation vs Query:</h4>
             <ul>
-                <li><code>550e8400-e29b-41d4-a716-446655440001</code> - Welcome to GraphQL</li>
-                <li><code>550e8400-e29b-41d4-a716-446655440002</code> - Learning Rust</li>
-                <li><code>550e8400-e29b-41d4-a716-446655440003</code> - async-graphql Features</li>
-                <li><code>550e8400-e29b-41d4-a716-446655440004</code> - UUID Benefits</li>
+                <li><strong>Query:</strong> <code>query { ... }</code> - Read data, no side effects</li>
+                <li><strong>Mutation:</strong> <code>mutation { ... }</code> - Write data, has side effects</li>
+                <li><strong>Convention:</strong> Use mutations for create/update/delete operations</li>
             </ul>
         </div>
     </div>
@@ -264,27 +333,35 @@ type Note {
     content
   }
 }`,
-            noteUuid2: `query {
-  note(id: "550e8400-e29b-41d4-a716-446655440002") {
-    id
-    title
-  }
-}`,
-            noteNotFound: `query {
-  note(id: "invalid-uuid-string") {
+            createNote: `mutation {
+  createNote(input: {
+    title: "My New Note"
+    content: "This note was created via GraphQL mutation!"
+  }) {
     id
     title
     content
   }
 }`,
-            combined: `query {
-  hello
-  note(id: "550e8400-e29b-41d4-a716-446655440001") {
-    title
-  }
-  notes {
+            createLongNote: `mutation {
+  createNote(input: {
+    title: "Learning GraphQL Mutations"
+    content: "This is a longer note about GraphQL mutations. They allow us to modify data on the server. Each mutation returns the created/modified object so we can see the results immediately. UUIDs are generated automatically!"
+  }) {
     id
     title
+    content
+  }
+}`,
+            introspection: `query {
+  __schema {
+    mutationType {
+      name
+      fields {
+        name
+        description
+      }
+    }
   }
 }`
         };
@@ -328,9 +405,8 @@ type Note {
 /// 4. Listens for incoming connections
 #[tokio::main]
 async fn main() {
-    // Initialize the GraphQL schema with our Query type
-    // EmptyMutation and EmptySubscription are placeholders for now
-    let schema = Schema::build(Query, EmptyMutation, EmptySubscription).finish();
+    // Initialize the GraphQL schema with our Query AND Mutation types
+    let schema = Schema::build(Query, Mutation, EmptySubscription).finish(); // Changed EmptyMutation to Mutation
 
     // Build the Axum application with our routes
     let app = Router::new()
@@ -347,6 +423,7 @@ async fn main() {
     println!("🚀 GraphQL server running on http://127.0.0.1:8000");
     println!("📊 GraphiQL playground available at http://127.0.0.1:8000");
     println!("📝 Send GraphQL requests to http://127.0.0.1:8000/graphql");
+    println!("✨ Day 4: Mutations now available!");
 
     // Start serving requests (Axum 0.6 syntax)
     Server::bind(&addr)
