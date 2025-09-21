@@ -1,32 +1,121 @@
-//! # Notes App Backend - Day 4 Enhanced
+//! # Notes App Backend - Day 4 Enhanced: Clean Architecture
 //!
-//! A GraphQL API server for managing notes, built with Rust, Axum, and async-graphql.
-//! Now with clean, modular architecture!
+//! A production-ready GraphQL API server for managing notes, built with Rust, Axum, and async-graphql.
+//! Features clean, modular architecture following Rust best practices.
 //!
-//! ## Architecture
+//! ## 🏗️ Architecture Overview
 //!
-//! - `types.rs` - GraphQL types and input definitions
-//! - `resolvers.rs` - Query and Mutation implementations  
-//! - `data.rs` - Data access and sample data
-//! - `web.rs` - HTTP handlers and server setup
-//! - `main.rs` - Application entry point
+//! This application uses a layered, modular architecture:
 //!
-//! ## Features
-//!
-//! - GraphQL API with introspection
-//! - GraphiQL playground for development
-//! - UUID-based unique identifiers
-//! - Clean, modular code organization
-//! - Type-safe schema definition
-//!
-//! ## Usage
-//!
-//! Start the server:
-//! ```bash
-//! cargo run
+//! ```text
+//! ┌─────────────────┐
+//! │   HTTP Layer    │  web.rs - GraphQL handlers, GraphiQL UI
+//! ├─────────────────┤
+//! │ Resolver Layer  │  resolvers.rs - Business logic, Query/Mutation
+//! ├─────────────────┤
+//! │   Type Layer    │  types.rs - GraphQL schema definitions
+//! ├─────────────────┤
+//! │   Data Layer    │  data.rs - Data access, sample data
+//! └─────────────────┘
 //! ```
 //!
-//! Then visit http://127.0.0.1:8000 for the GraphiQL playground.
+//! ## 🚀 Features
+//!
+//! ### Day 1-2: Foundation
+//! - ✅ GraphQL server with Axum integration
+//! - ✅ Interactive GraphiQL playground
+//! - ✅ Type-safe schema definition
+//! - ✅ Query operations (hello, notes list)
+//!
+//! ### Day 3: Advanced Queries
+//! - ✅ UUID-based unique identifiers
+//! - ✅ Single note queries with error handling
+//! - ✅ Optional vs required GraphQL types
+//! - ✅ Field selection and query composition
+//!
+//! ### Day 4: Mutations & Architecture
+//! - ✅ GraphQL mutations for data modification
+//! - ✅ Input types for structured arguments
+//! - ✅ Automatic UUID generation
+//! - ✅ Clean, modular code organization
+//!
+//! ## 📊 GraphQL Schema
+//!
+//! ```graphql
+//! type Query {
+//!   hello: String!
+//!   notes: [Note!]!
+//!   note(id: String!): Note
+//! }
+//!
+//! type Mutation {
+//!   createNote(input: CreateNoteInput!): Note!
+//! }
+//!
+//! input CreateNoteInput {
+//!   title: String!
+//!   content: String!
+//! }
+//!
+//! type Note {
+//!   id: String!      # UUID format
+//!   title: String!
+//!   content: String!
+//! }
+//! ```
+//!
+//! ## 🛠️ Usage
+//!
+//! ### Development Server
+//! ```bash
+//! # Start the development server
+//! cargo run
+//!
+//! # Server runs on http://127.0.0.1:8000
+//! # GraphiQL playground: http://127.0.0.1:8000
+//! # GraphQL endpoint: http://127.0.0.1:8000/graphql
+//! ```
+//!
+//! ### Example Queries
+//! ```bash
+//! # List all notes
+//! curl -X POST http://127.0.0.1:8000/graphql \
+//!   -H "Content-Type: application/json" \
+//!   -d '{"query": "{ notes { id title } }"}'
+//!
+//! # Get single note
+//! curl -X POST http://127.0.0.1:8000/graphql \
+//!   -H "Content-Type: application/json" \
+//!   -d '{"query": "{ note(id: \"uuid-here\") { title content } }"}'
+//!
+//! # Create new note
+//! curl -X POST http://127.0.0.1:8000/graphql \
+//!   -H "Content-Type: application/json" \
+//!   -d '{"query": "mutation { createNote(input: {title: \"Test\", content: \"Content\"}) { id } }"}'
+//! ```
+//!
+//! ## 🗂️ Module Documentation
+//!
+//! - [`types`] - GraphQL type definitions and input structures
+//! - [`resolvers`] - Query and Mutation business logic implementations  
+//! - [`data`] - Data access functions and sample data management
+//! - [`web`] - HTTP handlers, GraphiQL UI, and server configuration
+//!
+//! ## 🎯 Learning Roadmap
+//!
+//! This codebase demonstrates progressive GraphQL concepts:
+//!
+//! - **Days 1-4**: ✅ Core GraphQL (queries, mutations, types)
+//! - **Days 5-6**: 🔄 Complete CRUD operations
+//! - **Days 7-11**: 🔄 Flutter integration
+//! - **Days 12-14**: 🔄 Database, real-time, deployment
+//!
+//! ## 📚 Dependencies
+//!
+//! - [`async-graphql`] - GraphQL server implementation
+//! - [`axum`] - Modern web framework
+//! - [`tokio`] - Async runtime
+//! - [`uuid`] - UUID generation
 
 mod data;
 mod resolvers;
