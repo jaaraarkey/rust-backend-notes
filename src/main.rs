@@ -49,6 +49,31 @@ pub struct Note {
 /// Each method in this impl block becomes a field in the GraphQL Query type.
 pub struct Query;
 
+fn get_sample_notes() -> Vec<Note> {
+    vec![
+        Note {
+            id: 1,
+            title: "Welcome to GraphQL".to_string(),
+            content: "This is your first note! GraphQL allows you to query exactly the fields you need.".to_string(),
+        },
+        Note {
+            id: 2, 
+            title: "Learning Rust".to_string(),
+            content: "Rust's type system helps catch errors at compile time, making GraphQL APIs more reliable.".to_string(),
+        },
+        Note {
+            id: 3,
+            title: "async-graphql Features".to_string(), 
+            content: "The async-graphql crate provides powerful features like field selection, introspection, and automatic schema generation.".to_string(),
+        },
+        Note {
+            id: 4,
+            title: "Field Selection".to_string(),
+            content: "With GraphQL, clients can request only the fields they need: id, title, content, or any combination!".to_string(),
+        },
+    ]
+}
+
 #[Object]
 impl Query {
     /// A simple hello world query for testing the GraphQL setup.
@@ -75,28 +100,35 @@ impl Query {
     /// - Inner !: Each Note in the list is non-null
     /// - Outer !: The list itself is non-null (but can be empty)
     async fn notes(&self) -> Vec<Note> {
-        vec![
-            Note {
-                id: 1,
-                title: "Welcome to GraphQL".to_string(),
-                content: "This is your first note! GraphQL allows you to query exactly the fields you need.".to_string(),
-            },
-            Note {
-                id: 2, 
-                title: "Learning Rust".to_string(),
-                content: "Rust's type system helps catch errors at compile time, making GraphQL APIs more reliable.".to_string(),
-            },
-            Note {
-                id: 3,
-                title: "async-graphql Features".to_string(), 
-                content: "The async-graphql crate provides powerful features like field selection, introspection, and automatic schema generation.".to_string(),
-            },
-            Note {
-                id: 4,
-                title: "Field Selection".to_string(),
-                content: "With GraphQL, clients can request only the fields they need: id, title, content, or any combination!".to_string(),
-            },
-        ]
+        get_sample_notes()
+    }
+
+    /// Returns a single note by ID, or None if not found.
+    ///
+    /// This demonstrates:
+    /// - GraphQL arguments: note(id: Int!)
+    /// - Optional return types: Note vs Note!
+    /// - Error handling for missing data
+    /// - Input validation
+    ///
+    /// Arguments:
+    /// - id: The unique identifier of the note to retrieve
+    ///
+    /// Returns:
+    /// - Some(Note) if found
+    /// - None if no note exists with the given ID
+    ///
+    /// GraphQL Schema:
+    /// ```graphql
+    /// note(id: Int!): Note
+    /// ```
+    ///
+    /// The return type `Note` (without !) means:
+    /// - The field can return null if no note is found
+    /// - This is different from `Note!` which would require a note to always exist
+    async fn note(&self, id: i32) -> Option<Note> {
+        let notes = get_sample_notes();
+        notes.into_iter().find(|note| note.id == id)
     }
 }
 
@@ -135,28 +167,30 @@ async fn graphiql() -> Html<&'static str> {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GraphQL Test Interface - Day 2</title>
+    <title>GraphQL Test Interface - Day 3</title>
     <style>
         body { font-family: monospace; padding: 20px; background: #f8f9fa; }
         .container { max-width: 900px; margin: 0 auto; }
-        textarea { width: 100%; height: 250px; margin: 10px 0; font-family: monospace; font-size: 14px; }
+        textarea { width: 100%; height: 300px; margin: 10px 0; font-family: monospace; font-size: 14px; }
         button { padding: 10px 20px; background: #0066cc; color: white; border: none; cursor: pointer; margin: 5px; }
         button:hover { background: #0052a3; }
-        .result { background: #fff; padding: 15px; margin-top: 20px; white-space: pre-wrap; border: 1px solid #ddd; border-radius: 4px; }
+        .result { background: #fff; padding: 15px; margin-top: 20px; white-space: pre-wrap; border: 1px solid #ddd; border-radius: 4px; max-height: 400px; overflow-y: auto; }
         .examples { background: #fff; padding: 15px; margin: 20px 0; border-radius: 4px; border: 1px solid #ddd; }
         .examples h4 { margin-top: 0; color: #333; }
         code { background: #f1f3f4; padding: 2px 4px; border-radius: 3px; }
         .query-btn { background: #28a745; font-size: 12px; padding: 5px 10px; }
+        .error-btn { background: #dc3545; }
+        .combined-btn { background: #6f42c1; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>GraphQL Test Interface - Day 2</h1>
-        <p>Your GraphQL server is running with Notes support! 🚀</p>
+        <h1>GraphQL Test Interface - Day 3</h1>
+        <p>Your GraphQL server now supports single note queries with error handling! 🚀</p>
         
         <h3>Test Query:</h3>
         <textarea id="query" placeholder="Enter your GraphQL query...">query {
-  notes {
+  note(id: 1) {
     id
     title
     content
@@ -164,30 +198,47 @@ async fn graphiql() -> Html<&'static str> {
 }</textarea>
         
         <button onclick="executeQuery()">Execute Query</button>
-        <button class="query-btn" onclick="loadQuery('hello')">Hello Query</button>
-        <button class="query-btn" onclick="loadQuery('notes')">All Notes</button>
-        <button class="query-btn" onclick="loadQuery('notesSimple')">Notes (ID + Title)</button>
-        <button class="query-btn" onclick="loadQuery('combined')">Combined Query</button>
+        
+        <h4>Quick Test Buttons:</h4>
+        <button class="query-btn" onclick="loadQuery('hello')">Hello</button>
+        <button class="query-btn" onclick="loadQuery('allNotes')">All Notes</button>
+        <button class="query-btn" onclick="loadQuery('noteExists')">Note #1</button>
+        <button class="query-btn" onclick="loadQuery('noteExists2')">Note #3</button>
+        <button class="error-btn" onclick="loadQuery('noteNotFound')">Note #999 (Error)</button>
+        <button class="combined-btn" onclick="loadQuery('combined')">Combined Query</button>
+        <button class="query-btn" onclick="loadQuery('fieldSelection')">Field Selection</button>
         
         <div class="result" id="result">Results will appear here...</div>
         
         <div class="examples">
-            <h4>📋 Day 2 Example Queries:</h4>
+            <h4>📋 Day 3 Example Queries:</h4>
             <ul>
-                <li><code>{ hello }</code> - Basic hello query</li>
-                <li><code>{ notes { id title } }</code> - All notes with just ID and title</li>
-                <li><code>{ notes { title content } }</code> - All notes with title and content</li>
-                <li><code>{ hello notes { id title } }</code> - Multiple queries in one request</li>
-                <li><code>{ __schema { queryType { name } } }</code> - Schema introspection</li>
+                <li><code>{ note(id: 1) { id title } }</code> - Get note #1 with selected fields</li>
+                <li><code>{ note(id: 999) { id title } }</code> - Query non-existent note (returns null)</li>
+                <li><code>{ note(id: 2) { title content } }</code> - Get note #2 without ID field</li>
+                <li><code>{ notes { id title } note(id: 1) { content } }</code> - Combined list + single query</li>
             </ul>
             
-            <h4>🎯 GraphQL Concepts Demonstrated:</h4>
+            <h4>🎯 Day 3 GraphQL Concepts:</h4>
             <ul>
-                <li><strong>List Types:</strong> [Note!]! returns an array of notes</li>
-                <li><strong>Field Selection:</strong> Choose which fields to return</li>
-                <li><strong>Complex Types:</strong> Note type with multiple fields</li>
-                <li><strong>Multiple Queries:</strong> Combine different queries</li>
+                <li><strong>Arguments:</strong> <code>note(id: Int!)</code> requires an ID parameter</li>
+                <li><strong>Optional Types:</strong> <code>Note</code> can return null, <code>Note!</code> cannot</li>
+                <li><strong>Error Handling:</strong> Graceful handling of missing data</li>
+                <li><strong>Input Validation:</strong> Type-safe argument handling</li>
             </ul>
+            
+            <h4>📊 Current Schema (Day 3):</h4>
+            <pre>type Query {
+  hello: String!
+  notes: [Note!]!
+  note(id: Int!): Note  # Note: can return null
+}
+
+type Note {
+  id: Int!
+  title: String!
+  content: String!
+}</pre>
         </div>
     </div>
 
@@ -196,24 +247,47 @@ async fn graphiql() -> Html<&'static str> {
             hello: `query {
   hello
 }`,
-            notes: `query {
+            allNotes: `query {
   notes {
     id
     title
     content
   }
 }`,
-            notesSimple: `query {
+            noteExists: `query {
+  note(id: 1) {
+    id
+    title
+    content
+  }
+}`,
+            noteExists2: `query {
+  note(id: 3) {
+    id
+    title
+  }
+}`,
+            noteNotFound: `query {
+  note(id: 999) {
+    id
+    title
+    content
+  }
+}`,
+            combined: `query {
+  hello
+  note(id: 1) {
+    title
+  }
   notes {
     id
     title
   }
 }`,
-            combined: `query {
-  hello
-  notes {
-    id
+            fieldSelection: `query {
+  note(id: 2) {
     title
+    content
   }
 }`
         };
