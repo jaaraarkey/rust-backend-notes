@@ -38,17 +38,19 @@
 
 use async_graphql::{InputObject, SimpleObject};
 
-/// Represents a note in our application with UUID-based unique identification.
+/// Represents a note in our application with UUID-based unique identification and timestamps.
 ///
-/// Notes have a UUID, title, and content. UUIDs are globally unique identifiers
-/// that are much more robust than simple integer IDs.
+/// Notes have a UUID, title, content, and automatic timestamp tracking for
+/// creation and last modification times.
 ///
 /// # GraphQL Schema
 /// ```graphql
 /// type Note {
-///   id: String!      # UUID format
+///   id: String!        # UUID format
 ///   title: String!
 ///   content: String!
+///   createdAt: String! # ISO 8601 timestamp
+///   updatedAt: String! # ISO 8601 timestamp
 /// }
 /// ```
 ///
@@ -60,6 +62,8 @@ use async_graphql::{InputObject, SimpleObject};
 ///     id: "550e8400-e29b-41d4-a716-446655440001".to_string(),
 ///     title: "My Note".to_string(),
 ///     content: "Note content here".to_string(),
+///     created_at: "2023-10-10T10:00:00Z".to_string(),
+///     updated_at: "2023-10-10T10:00:00Z".to_string(),
 /// };
 /// ```
 #[derive(SimpleObject, Clone, Debug)]
@@ -70,6 +74,12 @@ pub struct Note {
     pub title: String,
     /// The note's content/body
     pub content: String,
+    /// When the note was created (ISO 8601 UTC timestamp)
+    #[graphql(name = "createdAt")]
+    pub created_at: String,
+    /// When the note was last updated (ISO 8601 UTC timestamp)
+    #[graphql(name = "updatedAt")]
+    pub updated_at: String,
 }
 
 /// Input type for creating a new note.
@@ -101,4 +111,25 @@ pub struct CreateNoteInput {
     pub title: String,
     /// The content/body of the new note (required)  
     pub content: String,
+}
+
+/// Input type for updating an existing note.
+///
+/// This demonstrates partial updates in GraphQL - all fields are optional
+/// so clients can update only the fields they want to change.
+/// The `updatedAt` timestamp is automatically updated server-side.
+///
+/// # GraphQL Schema
+/// ```graphql
+/// input UpdateNoteInput {
+///   title: String      # Optional - only update if provided
+///   content: String    # Optional - only update if provided
+/// }
+/// ```
+#[derive(InputObject)]
+pub struct UpdateNoteInput {
+    /// New title for the note (optional - only updates if provided)
+    pub title: Option<String>,
+    /// New content for the note (optional - only updates if provided)
+    pub content: Option<String>,
 }
