@@ -96,7 +96,7 @@ impl Query {
 /// The root Mutation type for our GraphQL schema.
 ///
 /// This contains all the "write" operations that clients can perform.
-/// All mutations automatically manage timestamps appropriately.
+/// Each method in this impl block becomes a field in the GraphQL Mutation type.
 pub struct Mutation;
 
 #[Object]
