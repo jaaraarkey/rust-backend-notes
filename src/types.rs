@@ -11,12 +11,14 @@
 //!
 //! ### Input Types  
 //! - [`CreateNoteInput`] - Input structure for creating new notes
+//! - [`UpdateNoteInput`] - Input structure for updating existing notes
 //!
 //! ## 🎯 Design Principles
 //!
 //! - **UUID-based IDs**: All entities use UUIDs for global uniqueness
-//! - **Required fields**: All current fields are non-nullable for simplicity
-//! - **Future-ready**: Structure supports easy addition of optional fields
+//! - **Optional Updates**: Update inputs allow partial field updates
+//! - **Type Safety**: Compile-time validation for all operations
+//! - **Future-ready**: Structure supports easy addition of new fields
 //!
 //! ## Example Usage
 //!
@@ -101,4 +103,46 @@ pub struct CreateNoteInput {
     pub title: String,
     /// The content/body of the new note (required)  
     pub content: String,
+}
+
+/// Input type for updating an existing note.
+///
+/// This demonstrates partial updates in GraphQL - all fields are optional
+/// so clients can update only the fields they want to change.
+///
+/// # GraphQL Schema
+/// ```graphql
+/// input UpdateNoteInput {
+///   title: String      # Optional - only update if provided
+///   content: String    # Optional - only update if provided
+/// }
+/// ```
+///
+/// # Example Usage
+/// ```graphql
+/// # Update only the title
+/// mutation {
+///   updateNote(id: "uuid-here", input: {
+///     title: "New Title"
+///   }) {
+///     id title content
+///   }
+/// }
+///
+/// # Update both fields
+/// mutation {
+///   updateNote(id: "uuid-here", input: {
+///     title: "New Title"
+///     content: "New content here"
+///   }) {
+///     id title content
+///   }
+/// }
+/// ```
+#[derive(InputObject)]
+pub struct UpdateNoteInput {
+    /// New title for the note (optional - only updates if provided)
+    pub title: Option<String>,
+    /// New content for the note (optional - only updates if provided)
+    pub content: Option<String>,
 }

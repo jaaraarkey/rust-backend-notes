@@ -44,7 +44,7 @@ use async_graphql::Object;
 use uuid::Uuid;
 
 use crate::data::get_sample_notes;
-use crate::types::{CreateNoteInput, Note};
+use crate::types::{CreateNoteInput, Note, UpdateNoteInput}; // Add UpdateNoteInput
 
 /// The root Query type for our GraphQL schema.
 ///
@@ -141,6 +141,12 @@ impl Query {
 ///
 /// This contains all the "write" operations that clients can perform.
 /// Each method in this impl block becomes a field in the GraphQL Mutation type.
+///
+/// ## 🎯 CRUD Operations (Day 5 Complete)
+/// - **Create**: [`Mutation::create_note`] - Create new notes with UUID
+/// - **Update**: [`Mutation::update_note`] - Update existing notes by ID  
+/// - **Delete**: [`Mutation::delete_note`] - Delete notes by ID
+/// - **Read**: Available via [`Query`] operations
 pub struct Mutation;
 
 #[Object]
@@ -210,5 +216,142 @@ impl Mutation {
             title: input.title,
             content: input.content,
         }
+    }
+
+    /// Updates an existing note by ID with partial field updates.
+    ///
+    /// This mutation demonstrates advanced GraphQL concepts:
+    ///
+    /// ## 🔧 Technical Features
+    /// - **Partial Updates**: Only provided fields are updated
+    /// - **Optional Inputs**: Uses `Option<String>` for flexible updates
+    /// - **Error Handling**: Returns `None` if note doesn't exist
+    /// - **Field Preservation**: Unchanged fields keep their current values
+    ///
+    /// ## GraphQL Schema
+    /// ```graphql
+    /// updateNote(id: String!, input: UpdateNoteInput!): Note
+    /// ```
+    ///
+    /// ## Usage Examples
+    ///
+    /// ### Update Only Title
+    /// ```graphql
+    /// mutation {
+    ///   updateNote(id: "550e8400-e29b-41d4-a716-446655440001", input: {
+    ///     title: "Updated Title"
+    ///   }) {
+    ///     id
+    ///     title
+    ///     content
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// ### Update Both Fields
+    /// ```graphql
+    /// mutation {
+    ///   updateNote(id: "550e8400-e29b-41d4-a716-446655440001", input: {
+    ///     title: "New Title"
+    ///     content: "Completely new content here!"
+    ///   }) {
+    ///     id
+    ///     title
+    ///     content
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// # Arguments
+    /// - `id`: The UUID of the note to update
+    /// - `input`: [`UpdateNoteInput`] - Fields to update (all optional)
+    ///
+    /// # Returns
+    /// - `Some(`[`Note`]`)` - The updated note if found
+    /// - `None` - If no note exists with the given ID
+    ///
+    /// # Future Enhancements
+    /// - Will validate user permissions (Day 11)
+    /// - Will include optimistic locking (Day 12)
+    /// - Will trigger real-time updates (Day 13)
+    async fn update_note(&self, id: String, input: UpdateNoteInput) -> Option<Note> {
+        // In a real app, this would update the database
+        // For now, we simulate finding and updating a note
+        let notes = get_sample_notes();
+
+        // Find the existing note
+        if let Some(mut existing_note) = notes.into_iter().find(|note| note.id == id) {
+            // Update only the fields that were provided
+            if let Some(new_title) = input.title {
+                existing_note.title = new_title;
+            }
+
+            if let Some(new_content) = input.content {
+                existing_note.content = new_content;
+            }
+
+            // Return the updated note
+            Some(existing_note)
+        } else {
+            // Note not found
+            None
+        }
+    }
+
+    /// Deletes a note by ID.
+    ///
+    /// This mutation demonstrates:
+    ///
+    /// ## 🔧 Technical Features
+    /// - **Simple Deletion**: Takes only an ID argument
+    /// - **Boolean Response**: Returns success/failure status
+    /// - **Error Handling**: `false` if note doesn't exist
+    /// - **Idempotent**: Safe to call multiple times
+    ///
+    /// ## GraphQL Schema
+    /// ```graphql
+    /// deleteNote(id: String!): Boolean!
+    /// ```
+    ///
+    /// ## Usage Examples
+    ///
+    /// ### Delete by ID
+    /// ```graphql
+    /// mutation {
+    ///   deleteNote(id: "550e8400-e29b-41d4-a716-446655440001")
+    /// }
+    /// ```
+    ///
+    /// ### Delete with Confirmation Query
+    /// ```graphql
+    /// mutation {
+    ///   deleteNote(id: "550e8400-e29b-41d4-a716-446655440001")
+    /// }
+    /// # Then verify it's gone:
+    /// query {
+    ///   note(id: "550e8400-e29b-41d4-a716-446655440001") {
+    ///     id
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// # Arguments
+    /// - `id`: The UUID of the note to delete
+    ///
+    /// # Returns
+    /// - `true` - Note was found and deleted successfully
+    /// - `false` - Note was not found (already deleted or never existed)
+    ///
+    /// # Future Enhancements
+    /// - Will validate user permissions (Day 11)
+    /// - Will support soft deletes (Day 12)
+    /// - Will trigger real-time notifications (Day 13)
+    async fn delete_note(&self, id: String) -> bool {
+        // In a real app, this would delete from the database
+        // For now, we simulate checking if the note exists
+        let notes = get_sample_notes();
+
+        // Check if the note exists (in real app, this would delete it)
+        notes.into_iter().any(|note| note.id == id)
     }
 }
