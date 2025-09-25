@@ -118,8 +118,10 @@
 //! - [`uuid`] - UUID generation
 
 mod data;
+mod errors;
 mod resolvers;
 mod types;
+mod validation;
 mod web;
 
 use async_graphql::{EmptySubscription, Schema};

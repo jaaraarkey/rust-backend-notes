@@ -109,9 +109,9 @@ pub struct Note {
 /// ```
 #[derive(InputObject)]
 pub struct CreateNoteInput {
-    /// The title of the new note (required)
-    pub title: String,
-    /// The content/body of the new note (required)  
+    /// The title of the new note (optional - auto-generated from content if not provided)
+    pub title: Option<String>,
+    /// The content/body of the new note (required, always preserved completely)  
     pub content: String,
 }
 
