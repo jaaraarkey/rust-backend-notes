@@ -4,12 +4,23 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.6.20"
+# Use axum 0.6 - stable and well-supported
+axum = "0.6"
 tokio = { version = "1", features = ["full"] }
-async-graphql = "5.0.10"
-async-graphql-axum = "5.0.10"
+
+# GraphQL with compatible axum 0.6 version
+async-graphql = "6.0"
+async-graphql-axum = "6.0"
+
+# Utilities
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 validator = "0.18"
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+
+# HTTP middleware - compatible with axum 0.6
+tower-http = { version = "0.4", features = ["cors"] }

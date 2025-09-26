@@ -1,72 +1,75 @@
-//! # GraphQL Resolvers with Smart Auto-Title Generation
+//! # GraphQL Resolvers with Database Integration
 //!
-//! This module implements the core business logic for all GraphQL operations.
-//! Resolvers are functions that fetch/modify data in response to GraphQL queries and mutations.
-//! Now includes automatic timestamp management and smart title extraction.
+//! This module implements resolvers that use persistent SQLite storage
+//! while maintaining smart auto-title generation and comprehensive error handling.
 
-use async_graphql::Object;
-use chrono::Utc;
-use uuid::Uuid;
+use async_graphql::{Context, Object};
 
-use crate::data::get_sample_notes;
+use crate::database::Database;
 use crate::errors::{AppError, AppResult};
 use crate::types::{CreateNoteInput, Note, UpdateNoteInput};
 use crate::validation::{validate_and_process_create_input, validate_update_input, validate_uuid};
 
-/// The root Query type for our GraphQL schema.
+/// The root Query type for our GraphQL schema with database integration.
 pub struct Query;
 
 #[Object]
 impl Query {
     /// A simple hello world query for testing the GraphQL setup.
     async fn hello(&self) -> &str {
-        "Hello from GraphQL with smart auto-title generation!"
+        "Hello from GraphQL with persistent database storage and smart auto-titles!"
     }
 
-    /// Returns a list of sample notes with timestamps for testing.
-    async fn notes(&self) -> Vec<Note> {
-        get_sample_notes()
+    /// Returns all notes from the database, ordered by creation date (newest first).
+    async fn notes(&self, ctx: &Context<'_>) -> AppResult<Vec<Note>> {
+        let database = ctx
+            .data::<Database>()
+            .map_err(|_| AppError::InternalError)?;
+        database.get_all_notes().await
     }
 
-    /// Returns a single note by UUID with validation, or error if not found.
-    async fn note(&self, id: String) -> AppResult<Note> {
+    /// Returns a single note by UUID from the database, with validation.
+    async fn note(&self, ctx: &Context<'_>, id: String) -> AppResult<Note> {
         // Validate UUID format first
         validate_uuid(&id)?;
 
-        let notes = get_sample_notes();
-        notes
-            .into_iter()
-            .find(|note| note.id == id)
-            .ok_or_else(|| AppError::NoteNotFound { id: id.clone() })
+        let database = ctx
+            .data::<Database>()
+            .map_err(|_| AppError::InternalError)?;
+
+        match database.get_note_by_id(&id).await? {
+            Some(note) => Ok(note),
+            None => Err(AppError::NoteNotFound { id }),
+        }
     }
 }
 
-/// The root Mutation type for our GraphQL schema.
+/// The root Mutation type for our GraphQL schema with database integration.
 pub struct Mutation;
 
 #[Object]
 impl Mutation {
-    /// Creates a new note with smart auto-title generation and validation.
-    async fn create_note(&self, input: CreateNoteInput) -> AppResult<Note> {
+    /// Creates a new note with smart auto-title generation and saves to database.
+    async fn create_note(&self, ctx: &Context<'_>, input: CreateNoteInput) -> AppResult<Note> {
         // Process input with smart title extraction (content preserved)
         let (final_title, final_content) = validate_and_process_create_input(
-            input.title.as_deref(), // ← FIX: Convert Option<String> to Option<&str>
+            input.title.as_deref(), // Convert Option<String> to Option<&str>
             &input.content,
         )?;
 
-        let now = Utc::now().to_rfc3339();
-
-        Ok(Note {
-            id: Uuid::new_v4().to_string(),
-            title: final_title,
-            content: final_content, // Always complete, never modified
-            created_at: now.clone(),
-            updated_at: now,
-        })
+        let database = ctx
+            .data::<Database>()
+            .map_err(|_| AppError::InternalError)?;
+        database.create_note(&final_title, &final_content).await
     }
 
-    /// Updates an existing note by ID with automatic timestamp management.
-    async fn update_note(&self, id: String, input: UpdateNoteInput) -> AppResult<Note> {
+    /// Updates an existing note in the database with validation and automatic timestamp management.
+    async fn update_note(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        input: UpdateNoteInput,
+    ) -> AppResult<Note> {
         // Validate UUID format first
         validate_uuid(&id)?;
 
@@ -76,37 +79,30 @@ impl Mutation {
             input.content.as_deref(),
         )?;
 
-        let notes = get_sample_notes();
+        let database = ctx
+            .data::<Database>()
+            .map_err(|_| AppError::InternalError)?;
 
-        if let Some(mut existing_note) = notes.into_iter().find(|note| note.id == id) {
-            // Update only the fields that were provided (after validation)
-            if let Some(new_title) = input.title {
-                existing_note.title = new_title.trim().to_string();
-            }
-
-            if let Some(new_content) = input.content {
-                existing_note.content = new_content.trim().to_string();
-            }
-
-            // Always update the updatedAt timestamp
-            existing_note.updated_at = Utc::now().to_rfc3339();
-            // createdAt remains unchanged
-
-            Ok(existing_note)
-        } else {
-            Err(AppError::NoteNotFound { id })
+        match database
+            .update_note(&id, input.title.as_deref(), input.content.as_deref())
+            .await?
+        {
+            Some(note) => Ok(note),
+            None => Err(AppError::NoteNotFound { id }),
         }
     }
 
-    /// Deletes a note by ID with validation.
-    async fn delete_note(&self, id: String) -> AppResult<bool> {
+    /// Deletes a note by ID from the database with validation.
+    async fn delete_note(&self, ctx: &Context<'_>, id: String) -> AppResult<bool> {
         // Validate UUID format first
         validate_uuid(&id)?;
 
-        let notes = get_sample_notes();
-        let found = notes.into_iter().any(|note| note.id == id);
+        let database = ctx
+            .data::<Database>()
+            .map_err(|_| AppError::InternalError)?;
 
-        if found {
+        let deleted = database.delete_note(&id).await?;
+        if deleted {
             Ok(true)
         } else {
             Err(AppError::NoteNotFound { id })

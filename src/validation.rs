@@ -20,6 +20,7 @@ impl ValidationRules {
     // - Database field size limits (TEXT vs LONGTEXT in MySQL, etc.)
     // - Memory usage considerations for large content processing
     // - Network transfer optimization
+    // - Content security (e.g., preventing DoS with huge payloads)
 }
 
 /// Validate note title
@@ -98,58 +99,74 @@ pub fn validate_uuid(uuid_str: &str) -> AppResult<Uuid> {
     }
 }
 
-/// Extract title from content while preserving the complete content
-pub fn extract_title_from_content(content: &str) -> String {
+/// Extract a smart title from content using multiple strategies
+fn extract_title_from_content(content: &str) -> String {
     let content = content.trim();
 
-    // Strategy 1: Split by first period followed by space
-    if let Some(period_pos) = content.find(". ") {
-        let title = content[..period_pos].trim();
-        if !title.is_empty() && title.len() <= ValidationRules::TITLE_MAX_LENGTH {
-            return title.to_string();
+    if content.is_empty() {
+        return "Untitled".to_string();
+    }
+
+    // Strategy 1: Find first sentence ending with period
+    if let Some(period_pos) = content.find('.') {
+        let sentence = content[..period_pos].trim();
+        if !sentence.is_empty() && sentence.len() <= 200 {
+            let title = format!("{}", sentence);
+            return truncate_title_if_needed(&title);
         }
     }
 
-    // Strategy 2: Split by first exclamation mark followed by space
-    if let Some(excl_pos) = content.find("! ") {
-        let title = content[..excl_pos + 1].trim(); // Include the !
-        if !title.is_empty() && title.len() <= ValidationRules::TITLE_MAX_LENGTH {
-            return title.to_string();
+    // Strategy 2: Find first exclamation
+    if let Some(exclamation_pos) = content.find('!') {
+        let sentence = content[..=exclamation_pos].trim();
+        if !sentence.is_empty() && sentence.len() <= 200 {
+            return truncate_title_if_needed(sentence);
         }
     }
 
-    // Strategy 3: Split by first question mark followed by space
-    if let Some(quest_pos) = content.find("? ") {
-        let title = content[..quest_pos + 1].trim(); // Include the ?
-        if !title.is_empty() && title.len() <= ValidationRules::TITLE_MAX_LENGTH {
-            return title.to_string();
+    // Strategy 3: Find first question
+    if let Some(question_pos) = content.find('?') {
+        let sentence = content[..=question_pos].trim();
+        if !sentence.is_empty() && sentence.len() <= 200 {
+            return truncate_title_if_needed(sentence);
         }
     }
 
-    // Strategy 4: First line (split by newline)
+    // Strategy 4: Find first line break
     if let Some(newline_pos) = content.find('\n') {
-        let title = content[..newline_pos].trim();
-        if !title.is_empty() && title.len() <= ValidationRules::TITLE_MAX_LENGTH {
-            return title.to_string();
+        let first_line = content[..newline_pos].trim();
+        if !first_line.is_empty() && first_line.len() <= 200 {
+            return truncate_title_if_needed(first_line);
         }
     }
 
-    // Strategy 5: Truncate long content intelligently
-    if content.len() > ValidationRules::TITLE_MAX_LENGTH {
-        let truncate_at = ValidationRules::TITLE_MAX_LENGTH.min(50); // Max 50 chars for auto-title
-        let title_candidate = &content[..truncate_at];
+    // Strategy 5: Take first 50 characters, truncate intelligently
+    let title = if content.len() <= 50 {
+        content.to_string()
+    } else {
+        truncate_title_if_needed(content)
+    };
 
-        // Try to break at word boundary
-        if let Some(space_pos) = title_candidate.rfind(' ') {
-            let clean_title = title_candidate[..space_pos].trim();
-            return format!("{}...", clean_title);
-        }
+    title
+}
 
-        return format!("{}...", title_candidate.trim());
+/// Truncate title if it's too long, keeping word boundaries
+fn truncate_title_if_needed(title: &str) -> String {
+    const MAX_TITLE_LENGTH: usize = 50;
+
+    if title.len() <= MAX_TITLE_LENGTH {
+        return title.to_string();
     }
 
-    // Strategy 6: Use entire content as title (for short content)
-    content.to_string()
+    // Find the last space within the limit
+    let truncated = &title[..MAX_TITLE_LENGTH];
+    if let Some(last_space) = truncated.rfind(' ') {
+        // Truncate at last space and add ellipsis
+        format!("{}...", &title[..last_space])
+    } else {
+        // No spaces found, just truncate and add ellipsis
+        format!("{}...", &title[..MAX_TITLE_LENGTH.saturating_sub(3)])
+    }
 }
 
 /// Validate and process create note input with smart title extraction (content preserved)
@@ -281,12 +298,38 @@ mod tests {
     #[test]
     fn test_long_content_truncation() {
         let content = "This is a very long title that exceeds normal limits and should be truncated intelligently at word boundaries for better readability and user experience.";
-        let title = extract_title_from_content(content);
-        assert!(title.len() <= 50);
-        assert!(title.ends_with("..."));
 
+        // Test the title extraction directly
+        let title = extract_title_from_content(content);
+        println!("Extracted title: '{}'", title);
+        assert!(title.len() <= 53); // 50 chars + "..." = 53
+        assert!(title.ends_with("..."));
+        assert!(title.starts_with("This is a very long title"));
+
+        // Test the full processing function
         let (final_title, final_content) =
             validate_and_process_create_input(None, content).unwrap();
+        assert!(final_title.len() <= 53); // Should be truncated + "..."
+        assert!(final_title.ends_with("..."));
         assert_eq!(final_content, content); // Content always preserved completely!
+    }
+
+    #[test]
+    fn test_title_truncation_at_word_boundary() {
+        let content = "This is a test of intelligent word boundary truncation that should break at spaces not in the middle of words";
+        let title = extract_title_from_content(content);
+
+        // Should truncate at word boundary, not mid-word
+        assert!(title.ends_with("..."));
+        assert!(!title.contains("trunca...")); // Shouldn't break mid-word
+        assert!(title.len() <= 53);
+    }
+
+    #[test]
+    fn test_short_title_no_truncation() {
+        let content = "Short title here";
+        let title = extract_title_from_content(content);
+        assert_eq!(title, "Short title here");
+        assert!(!title.ends_with("..."));
     }
 }

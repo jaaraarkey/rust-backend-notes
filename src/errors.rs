@@ -7,7 +7,7 @@ use async_graphql::ErrorExtensions;
 use thiserror::Error;
 
 /// Application-specific error types with detailed context
-#[derive(Debug, Error, Clone)] // ← ADD Clone HERE
+#[derive(Debug, Error, Clone)]
 pub enum AppError {
     #[error("Note not found with ID: {id}")]
     NoteNotFound { id: String },
@@ -21,6 +21,13 @@ pub enum AppError {
     #[error("Content validation failed: {message}")]
     InvalidContent { message: String },
 
+    /// Multiple validation errors for batch operations
+    ///
+    /// This variant will be used in future features like:
+    /// - Batch note creation/updates
+    /// - Multi-field validation feedback
+    /// - Bulk import error reporting
+    #[allow(dead_code)] // TODO: Will be used for batch validation features
     #[error("Multiple validation errors occurred")]
     ValidationErrors { errors: Vec<String> },
 
