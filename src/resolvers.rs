@@ -42,6 +42,20 @@ impl Query {
             None => Err(AppError::NoteNotFound { id }),
         }
     }
+
+    /// 🔍 Search notes using PostgreSQL full-text search
+    async fn search_notes(&self, ctx: &Context<'_>, query: String) -> AppResult<Vec<Note>> {
+        if query.trim().is_empty() {
+            return Err(AppError::InvalidContent {
+                message: "Search query cannot be empty".to_string(),
+            });
+        }
+
+        let database = ctx
+            .data::<Database>()
+            .map_err(|_| AppError::InternalError)?;
+        database.search_notes(&query).await
+    }
 }
 
 /// The root Mutation type for our GraphQL schema with database integration.

@@ -15,8 +15,7 @@ use axum::{
     extract::Extension,
     http::Method,
     routing::{get, post},
-    Router,
-    Server, // ← Import Server for axum 0.6
+    Router, Server,
 };
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
@@ -26,15 +25,18 @@ use crate::resolvers::{Mutation, Query};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize database connection pool
-    println!("🗃️  Initializing database connection...");
+    // Load environment variables
+    dotenv::dotenv().ok();
+
+    // Initialize PostgreSQL connection pool
+    println!("🐘 Initializing PostgreSQL connection...");
     let pool = create_database_pool().await?;
 
     // Create database instance and run migrations
     let database = Database::new(pool);
-    println!("⚡ Running database migrations...");
+    println!("⚡ Running PostgreSQL migrations...");
     database.migrate().await?;
-    println!("✅ Database ready!");
+    println!("✅ PostgreSQL database ready!");
 
     // Build GraphQL schema with database context
     let schema = Schema::build(Query, Mutation, EmptySubscription)
@@ -47,21 +49,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_headers(Any)
         .allow_origin(Any);
 
-    // Build application with routes and middleware
+    // Build application
     let app = Router::new()
         .route("/", get(web::graphiql))
         .route("/graphql", post(web::graphql_handler))
-        .layer(Extension(schema)) // ← BACK TO Extension pattern
+        .layer(Extension(schema))
         .layer(cors);
 
     // Server startup messages
-    println!("🚀 GraphQL server with database ready at http://127.0.0.1:8000");
-    println!("📊 GraphiQL interface at http://127.0.0.1:8000");
-    println!("🗃️  Database: SQLite (notes.db)");
+    println!("🚀 Smart Notes GraphQL API with PostgreSQL ready!");
+    println!("📊 GraphiQL interface: http://127.0.0.1:8000");
+    println!("🔗 GraphQL endpoint: http://127.0.0.1:8000/graphql");
+    println!("🐘 Database: PostgreSQL (enterprise-grade)");
     println!("🎯 Smart auto-title generation: ENABLED");
-    println!("✨ Stable Axum 0.6 API with Extension pattern");
+    println!("🔍 Full-text search: ENABLED");
+    println!("⚡ Advanced indexing: ENABLED");
 
-    // Create server and bind to address (Axum 0.6 API)
+    // Start server
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
     Server::bind(&addr).serve(app.into_make_service()).await?;
 

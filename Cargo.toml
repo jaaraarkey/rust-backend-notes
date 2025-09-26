@@ -19,8 +19,11 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 validator = "0.18"
 
-# Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+# 🐘 PostgreSQL Database (upgraded from SQLite!)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
 
 # HTTP middleware - compatible with axum 0.6
 tower-http = { version = "0.4", features = ["cors"] }
+
+# Environment variables for database config
+dotenv = "0.15"
