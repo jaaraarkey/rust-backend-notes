@@ -72,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Full-text search: ENABLED");
     println!("✨ Your BRILLIANT NoteRow pattern matching is operational!");
 
+    println!("🔧 Starting server on port {}", port);
+    println!("🔧 Attempting to bind to {}", addr);
+
     // Modern Axum server startup
     let listener = TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;

@@ -8,6 +8,7 @@ use thiserror::Error;
 
 /// Application-specific error types with detailed context
 #[derive(Debug, Error, Clone)]
+#[allow(dead_code)]
 pub enum AppError {
     #[error("Note not found with ID: {id}")]
     NoteNotFound { id: String },
