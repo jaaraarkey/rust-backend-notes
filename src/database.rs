@@ -36,6 +36,7 @@ impl From<NoteRow> for Note {
 }
 
 /// Database operations struct
+#[derive(Clone)] // ✅ Add Clone trait here
 pub struct Database {
     pool: PgPool,
 }

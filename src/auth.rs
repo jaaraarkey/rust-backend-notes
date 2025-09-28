@@ -2,7 +2,7 @@
 //!
 //! JWT-based authentication system with bcrypt password hashing
 
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::{Context, InputObject, SimpleObject};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
@@ -13,7 +13,7 @@ use validator::Validate;
 use crate::errors::{AppError, AppResult};
 
 /// JWT Claims structure
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String, // User ID
     pub email: String,
@@ -33,6 +33,44 @@ impl Claims {
             exp: exp.timestamp(),
             iat: now.timestamp(),
         }
+    }
+}
+
+/// 🔐 Authentication Context for GraphQL
+#[derive(Debug, Clone)]
+pub struct AuthContext {
+    pub user_id: Option<Uuid>,
+    pub user: Option<UserRow>,
+    pub is_authenticated: bool,
+}
+
+impl AuthContext {
+    /// Create unauthenticated context
+    pub fn unauthenticated() -> Self {
+        Self {
+            user_id: None,
+            user: None,
+            is_authenticated: false,
+        }
+    }
+
+    /// Create authenticated context
+    pub fn authenticated(user_id: Uuid, user: UserRow) -> Self {
+        Self {
+            user_id: Some(user_id),
+            user: Some(user),
+            is_authenticated: true,
+        }
+    }
+
+    /// Get authenticated user ID or return error
+    pub fn require_user_id(&self) -> AppResult<Uuid> {
+        self.user_id.ok_or(AppError::Unauthorized)
+    }
+
+    /// Get authenticated user or return error
+    pub fn require_user(&self) -> AppResult<&UserRow> {
+        self.user.as_ref().ok_or(AppError::Unauthorized)
     }
 }
 
@@ -80,7 +118,7 @@ pub struct User {
 }
 
 /// Database user row helper
-#[derive(sqlx::FromRow, Clone)]
+#[derive(sqlx::FromRow, Clone, Debug)]
 pub struct UserRow {
     pub id: Uuid,
     pub email: String,
@@ -104,7 +142,8 @@ impl From<UserRow> for User {
     }
 }
 
-/// Authentication service
+/// Authentication service with middleware capabilities
+#[derive(Clone)] // ✅ Add Clone trait here too
 pub struct AuthService {
     jwt_secret: String,
 }
@@ -163,4 +202,51 @@ impl AuthService {
             message: "Invalid user ID in token".to_string(),
         })
     }
+
+    /// 🔐 Create auth context from Authorization header
+    pub async fn create_auth_context(
+        &self,
+        authorization_header: Option<&str>,
+        db: &crate::database::Database,
+    ) -> AuthContext {
+        let token = match authorization_header {
+            Some(auth_header) if auth_header.starts_with("Bearer ") => {
+                &auth_header[7..] // Remove "Bearer " prefix
+            }
+            _ => return AuthContext::unauthenticated(),
+        };
+
+        // Verify token and get claims
+        let claims = match self.verify_token(token) {
+            Ok(claims) => claims,
+            Err(_) => return AuthContext::unauthenticated(),
+        };
+
+        // Parse user ID
+        let user_id = match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(_) => return AuthContext::unauthenticated(),
+        };
+
+        // Get user from database
+        match db.get_user_by_id(user_id).await {
+            Ok(Some(user)) => AuthContext::authenticated(user_id, user),
+            _ => AuthContext::unauthenticated(),
+        }
+    }
+}
+
+/// 🔐 Helper function to get auth context from GraphQL context
+pub fn get_auth_context<'a>(ctx: &'a Context<'_>) -> AppResult<&'a AuthContext> {
+    ctx.data::<AuthContext>().map_err(|_| AppError::AuthError {
+        message: "Authentication context not available".to_string(),
+    })
+}
+
+/// 🛡️ Require authenticated user from GraphQL context
+pub fn require_auth<'a>(ctx: &'a Context<'_>) -> AppResult<(Uuid, &'a UserRow)> {
+    let auth_ctx = get_auth_context(ctx)?;
+    let user_id = auth_ctx.require_user_id()?;
+    let user = auth_ctx.require_user()?;
+    Ok((user_id, user))
 }

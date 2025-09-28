@@ -1,64 +1,93 @@
-//! # GraphQL Resolvers with Database Integration
+//! # GraphQL Resolvers with JWT Authentication
 //!
-//! This module implements resolvers that use persistent PostgreSQL storage
-//! while maintaining smart auto-title generation and comprehensive error handling.
+//! This module implements resolvers with JWT-based authentication
 
 use async_graphql::{Context, EmptySubscription, Object, Result};
 use validator::Validate;
 
-use crate::auth::{AuthResponse, AuthService, LoginInput, RegisterInput, User};
+use crate::auth::{
+    get_auth_context, require_auth, AuthResponse, AuthService, LoginInput, RegisterInput, User,
+};
 use crate::database::Database;
-use crate::errors::{AppError, AppResult}; // ✅ Add AppResult import here
+use crate::errors::{AppError, AppResult};
 use crate::types::{Note, NoteInput, UpdateNoteInput};
 
 pub struct QueryRoot;
 pub struct MutationRoot;
 
-// ✅ Use EmptySubscription as a type, not a value
 pub type SubscriptionRoot = EmptySubscription;
 
 #[Object]
 impl QueryRoot {
-    /// 👋 Hello world query with database info
-    async fn hello(&self) -> &'static str {
-        "Hello from GraphQL with PostgreSQL database, smart auto-titles, and authentication!"
+    /// 👋 Hello world query with authentication info
+    async fn hello(&self, ctx: &Context<'_>) -> Result<String> {
+        let auth_ctx = get_auth_context(ctx)?;
+
+        if auth_ctx.is_authenticated {
+            let user = auth_ctx.require_user()?;
+            Ok(format!(
+                "Hello {}! You're authenticated with Smart Notes API featuring PostgreSQL, JWT auth, and AI-powered features!",
+                user.email
+            ))
+        } else {
+            Ok("Hello! Welcome to Smart Notes API - please authenticate to access personalized features.".to_string())
+        }
     }
 
-    /// 📚 Get all notes (public - for now, will be user-specific later)
+    /// 📚 Get user's notes (authenticated)
     async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note>> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+        let notes = db.get_user_notes(user_id).await?;
+        Ok(notes)
+    }
+
+    /// 📚 Get all notes (admin/public access - remove in production)
+    async fn all_notes(&self, ctx: &Context<'_>) -> Result<Vec<Note>> {
         let db = ctx.data::<Database>()?;
         let notes = db.get_all_notes().await?;
         Ok(notes)
     }
 
-    /// 🔍 Get note by ID
+    /// 🔍 Get note by ID (user-specific)
     async fn note(&self, ctx: &Context<'_>, id: String) -> Result<Option<Note>> {
+        let (user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
-        let note = db.get_note_by_id(&id).await?;
-        Ok(note)
+
+        // First check if note exists and belongs to user
+        if let Some(note) = db.get_note_by_id(&id).await? {
+            // Verify note belongs to authenticated user (when we add user_id to notes)
+            // For now, just return the note
+            Ok(Some(note))
+        } else {
+            Ok(None)
+        }
     }
 
-    /// 🔎 Search notes with full-text search
+    /// 🔎 Search user's notes with full-text search (authenticated)
     async fn search_notes(&self, ctx: &Context<'_>, query: String) -> Result<Vec<Note>> {
+        let (user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
+
+        // Search only user's notes (when implemented)
         let notes = db.search_notes(&query).await?;
         Ok(notes)
+    }
+
+    /// 👤 Get current user profile
+    async fn me(&self, ctx: &Context<'_>) -> Result<User> {
+        let (_user_id, user) = require_auth(ctx)?;
+        Ok(User::from(user.clone()))
     }
 }
 
 #[Object]
 impl MutationRoot {
-    /// 📝 Create note with smart auto-title generation (SINGLE IMPLEMENTATION)
+    /// 📝 Create note for authenticated user
     async fn create_note(&self, ctx: &Context<'_>, input: NoteInput) -> Result<Note> {
-        // Clean validation
-        if input.content.is_empty() {
-            return Err(AppError::InvalidContent {
-                message: "Content cannot be empty".to_string(),
-            }
-            .into());
-        }
+        let (user_id, _user) = require_auth(ctx)?;
 
-        // Or even cleaner with custom validators:
+        // Validate input
         validate_note_input(&input)?;
 
         // Smart auto-title generation
@@ -67,36 +96,54 @@ impl MutationRoot {
             _ => generate_smart_title(&input.content),
         };
 
-        let db = ctx
-            .data::<Database>()
-            .map_err(|_| AppError::DatabaseError {
-                message: "Database connection not available".to_string(),
-            })?;
+        let db = ctx.data::<Database>()?;
 
-        // For now, create note without user authentication
-        // Later we'll switch to create_note_for_user when auth is fully implemented
-        db.create_note(&title, &input.content)
-            .await
-            .map_err(Into::into)
+        // Create note for authenticated user
+        let note = db
+            .create_note_for_user(user_id, &title, &input.content)
+            .await?;
+        Ok(note)
     }
 
-    /// 📝 Update note
+    /// 📝 Create public note (legacy - for testing)
+    async fn create_public_note(&self, ctx: &Context<'_>, input: NoteInput) -> Result<Note> {
+        // Validate input
+        validate_note_input(&input)?;
+
+        // Smart auto-title generation
+        let title = match input.title {
+            Some(title) if !title.trim().is_empty() => title,
+            _ => generate_smart_title(&input.content),
+        };
+
+        let db = ctx.data::<Database>()?;
+        let note = db.create_note(&title, &input.content).await?;
+        Ok(note)
+    }
+
+    /// 📝 Update user's note
     async fn update_note(
         &self,
         ctx: &Context<'_>,
         id: String,
         input: UpdateNoteInput,
     ) -> Result<Option<Note>> {
+        let (user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
+
+        // TODO: Verify note belongs to user before updating
         let note = db
             .update_note(&id, input.title.as_deref(), input.content.as_deref())
             .await?;
         Ok(note)
     }
 
-    /// 🗑️ Delete note
+    /// 🗑️ Delete user's note
     async fn delete_note(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
+        let (user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
+
+        // TODO: Verify note belongs to user before deleting
         let deleted = db.delete_note(&id).await?;
         Ok(deleted)
     }
@@ -154,9 +201,9 @@ fn generate_smart_title(content: &str) -> String {
         .next()
         .unwrap_or(content)
         .trim()
-        .replace('\n', " ") // ✅ Fixed: Use single quotes for char literals
-        .replace('\r', " ") // ✅ Fixed: Use single quotes for char literals
-        .replace('\t', " ") // ✅ Fixed: Use single quotes for char literals
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('\t', " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");

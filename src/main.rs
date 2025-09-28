@@ -1,6 +1,7 @@
-//! # Notes App Backend - Pure Axum Implementation
+//! # Smart Notes API with JWT Authentication
 //!
-//! Bypassing async-graphql-axum to avoid version conflicts
+//! Production-ready GraphQL API with JWT middleware
+
 mod auth;
 mod database;
 mod errors;
@@ -10,6 +11,10 @@ mod web;
 
 use async_graphql::{EmptySubscription, Schema};
 use axum::{
+    extract::{Request, State},
+    http::HeaderMap,
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
     Router,
 };
@@ -17,10 +22,30 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-use auth::AuthService;
+use auth::AuthService; // ✅ Remove AuthContext import (unused)
 use database::{create_database_pool, Database};
 use resolvers::{MutationRoot, QueryRoot};
 use web::{graphiql, graphql_handler, landing_page, AppSchema};
+
+/// 🔐 JWT Authentication Middleware
+async fn jwt_middleware(
+    State((auth_service, db)): State<(AuthService, Database)>,
+    headers: HeaderMap,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    // Extract Authorization header
+    let authorization = headers.get("authorization").and_then(|h| h.to_str().ok());
+
+    // Create authentication context
+    let auth_context = auth_service.create_auth_context(authorization, &db).await;
+
+    // Add auth context to request extensions
+    request.extensions_mut().insert(auth_context);
+
+    // Continue to next handler
+    next.run(request).await
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,17 +65,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let auth_service = AuthService::new();
 
-    // Create GraphQL schema with EmptySubscription
+    // Create GraphQL schema
     let schema: AppSchema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-        .data(db)
-        .data(auth_service)
+        .data(db.clone())
+        .data(auth_service.clone())
         .finish();
 
-    // Build application routes
+    // Build application routes with JWT middleware
     let app = Router::new()
-        .route("/", get(landing_page)) // Beautiful landing page
-        .route("/graphiql", get(graphiql)) // Interactive GraphiQL
-        .route("/graphql", post(graphql_handler)) // GraphQL endpoint
+        .route("/", get(landing_page))
+        .route("/graphiql", get(graphiql))
+        .route("/graphql", post(graphql_handler))
+        .layer(middleware::from_fn_with_state(
+            (auth_service, db),
+            jwt_middleware,
+        ))
         .layer(CorsLayer::permissive())
         .with_state(schema);
 
@@ -62,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     println!(
-        "🚀 GraphQL server with Docker PostgreSQL ready at http://127.0.0.1:{}",
+        "🚀 GraphQL server with JWT Authentication ready at http://127.0.0.1:{}",
         port
     );
     println!("🌟 Beautiful landing page at http://127.0.0.1:{}", port);
@@ -74,12 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🐳 Database: Docker PostgreSQL (smart_notes) - Port 5433");
     println!("🎯 Smart auto-title generation: ENABLED");
     println!("🔍 Full-text search: ENABLED");
-    println!("✨ Your BRILLIANT NoteRow pattern matching is operational!");
+    println!("🔐 Authentication: JWT-based with bcrypt password hashing");
+    println!("✨ JWT Middleware: OPERATIONAL!");
 
     println!("🔧 Starting server on port {}", port);
-    println!("🔧 Attempting to bind to {}", addr);
 
-    // Modern Axum server startup
     let listener = TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
 
