@@ -36,4 +36,9 @@ dotenv = "0.15"
 anyhow = "1.0"
 thiserror = "1.0"
 
+# Password hashing and JWT
+bcrypt = "0.15"
+jsonwebtoken = "9.2"
+validator = { version = "0.18", features = ["derive"] }
+
 # ✅ No async-graphql-axum - pure implementation to avoid version conflicts

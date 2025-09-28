@@ -1,88 +1,87 @@
-//! # Error Handling & Validation
+//! # Error Handling for Smart Notes API
 //!
-//! This module provides comprehensive error handling for the GraphQL API,
-//! including validation errors, not-found errors, and client-friendly messages.
+//! Comprehensive error types with GraphQL integration
 
-use async_graphql::ErrorExtensions;
-use thiserror::Error;
+use async_graphql::{ErrorExtensions, FieldError};
 
-/// Application-specific error types with detailed context
-#[derive(Debug, Error, Clone)]
-#[allow(dead_code)]
+pub type AppResult<T> = Result<T, AppError>;
+
+#[derive(thiserror::Error, Debug)]
 pub enum AppError {
-    #[error("Note not found with ID: {id}")]
-    NoteNotFound { id: String },
-
-    #[error("Invalid UUID format: '{uuid}' - must be valid UUID v4")]
-    InvalidUuid { uuid: String },
-
-    #[error("Title validation failed: {message}")]
-    InvalidTitle { message: String },
-
-    #[error("Content validation failed: {message}")]
-    InvalidContent { message: String },
-
-    /// Multiple validation errors for batch operations
-    ///
-    /// This variant will be used in future features like:
-    /// - Batch note creation/updates
-    /// - Multi-field validation feedback
-    /// - Bulk import error reporting
-    #[allow(dead_code)] // TODO: Will be used for batch validation features
-    #[error("Multiple validation errors occurred")]
-    ValidationErrors { errors: Vec<String> },
-
-    #[error("Database operation failed: {message}")]
+    #[error("Database error: {message}")]
     DatabaseError { message: String },
 
-    #[error("Internal server error occurred")]
-    InternalError,
+    #[error("Invalid UUID: {uuid}")]
+    InvalidUuid { uuid: String },
+
+    #[error("Invalid title: {message}")]
+    InvalidTitle { message: String },
+
+    #[error("Invalid content: {message}")]
+    InvalidContent { message: String },
+
+    #[error("Note not found")]
+    NoteNotFound,
+
+    // ✅ Authentication error variants
+    #[error("Authentication error: {message}")]
+    AuthError { message: String },
+
+    #[error("User not found")]
+    UserNotFound,
+
+    #[error("Email already exists")]
+    EmailAlreadyExists,
+
+    #[error("Invalid credentials")]
+    InvalidCredentials,
+
+    #[error("Unauthorized access")]
+    Unauthorized,
+
+    #[error("Validation error: {message}")]
+    ValidationError { message: String },
 }
 
 impl ErrorExtensions for AppError {
-    fn extend(&self) -> async_graphql::Error {
-        async_graphql::Error::new(format!("{}", self)).extend_with(|_err, e| match self {
-            AppError::NoteNotFound { id } => {
-                e.set("code", "NOTE_NOT_FOUND");
-                e.set("type", "CLIENT_ERROR");
-                e.set("noteId", id.as_str());
-            }
-            AppError::InvalidUuid { uuid } => {
-                e.set("code", "INVALID_UUID");
-                e.set("type", "CLIENT_ERROR");
-                e.set("invalidUuid", uuid.as_str());
-            }
-            AppError::InvalidTitle { message } => {
-                e.set("code", "INVALID_TITLE");
-                e.set("type", "CLIENT_ERROR");
-                e.set("field", "title");
-                e.set("details", message.as_str());
-            }
-            AppError::InvalidContent { message } => {
-                e.set("code", "INVALID_CONTENT");
-                e.set("type", "CLIENT_ERROR");
-                e.set("field", "content");
-                e.set("details", message.as_str());
-            }
-            AppError::ValidationErrors { errors } => {
-                e.set("code", "VALIDATION_ERRORS");
-                e.set("type", "CLIENT_ERROR");
-                e.set("errorCount", errors.len());
-                let error_strs: Vec<&str> = errors.iter().map(|s| s.as_str()).collect();
-                e.set("errors", error_strs);
-            }
-            AppError::DatabaseError { message } => {
+    fn extend(&self) -> FieldError {
+        self.extend_with(|_err, e| match self {
+            AppError::DatabaseError { .. } => {
                 e.set("code", "DATABASE_ERROR");
-                e.set("type", "SERVER_ERROR");
-                e.set("details", message.as_str());
             }
-            AppError::InternalError => {
-                e.set("code", "INTERNAL_ERROR");
-                e.set("type", "SERVER_ERROR");
+            AppError::InvalidUuid { .. } => {
+                e.set("code", "INVALID_UUID");
+            }
+            AppError::InvalidTitle { .. } => {
+                e.set("code", "INVALID_TITLE");
+            }
+            AppError::InvalidContent { .. } => {
+                e.set("code", "INVALID_CONTENT");
+            }
+            AppError::NoteNotFound => {
+                e.set("code", "NOTE_NOT_FOUND");
+            }
+            AppError::AuthError { .. } => {
+                e.set("code", "AUTH_ERROR");
+            }
+            AppError::UserNotFound => {
+                e.set("code", "USER_NOT_FOUND");
+            }
+            AppError::EmailAlreadyExists => {
+                e.set("code", "EMAIL_ALREADY_EXISTS");
+            }
+            AppError::InvalidCredentials => {
+                e.set("code", "INVALID_CREDENTIALS");
+            }
+            AppError::Unauthorized => {
+                e.set("code", "UNAUTHORIZED");
+            }
+            AppError::ValidationError { .. } => {
+                e.set("code", "VALIDATION_ERROR");
             }
         })
     }
 }
 
-/// Convenient type alias for our application results
-pub type AppResult<T> = Result<T, AppError>;
+// ✅ Removed conflicting From trait implementation
+// async-graphql already provides a generic From implementation

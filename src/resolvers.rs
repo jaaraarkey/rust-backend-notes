@@ -4,9 +4,11 @@
 //! while maintaining smart auto-title generation and comprehensive error handling.
 
 use async_graphql::{Context, EmptySubscription, Object, Result};
+use validator::Validate;
 
+use crate::auth::{AuthResponse, AuthService, LoginInput, RegisterInput, User};
 use crate::database::Database;
-use crate::errors::AppError; // ✨ Add this import!
+use crate::errors::AppError;
 use crate::types::{Note, NoteInput, UpdateNoteInput};
 
 pub struct QueryRoot;
@@ -17,33 +19,28 @@ pub type SubscriptionRoot = EmptySubscription;
 
 #[Object]
 impl QueryRoot {
-    /// A simple hello world query for testing the GraphQL setup.
-    async fn hello(&self) -> &str {
-        "Hello from GraphQL with PostgreSQL database and smart auto-titles!"
+    /// 👋 Hello world query with database info
+    async fn hello(&self) -> &'static str {
+        "Hello from GraphQL with PostgreSQL database, smart auto-titles, and authentication!"
     }
 
-    /// Returns all notes from the database, ordered by creation date (newest first).
+    /// 📚 Get all notes (public - for now, will be user-specific later)
     async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note>> {
         let db = ctx.data::<Database>()?;
         let notes = db.get_all_notes().await?;
         Ok(notes)
     }
 
-    /// Returns a single note by UUID from the database, with validation.
+    /// 🔍 Get note by ID
     async fn note(&self, ctx: &Context<'_>, id: String) -> Result<Option<Note>> {
         let db = ctx.data::<Database>()?;
         let note = db.get_note_by_id(&id).await?;
         Ok(note)
     }
 
-    /// 🔍 Search notes using PostgreSQL full-text search
+    /// 🔎 Search notes with full-text search
     async fn search_notes(&self, ctx: &Context<'_>, query: String) -> Result<Vec<Note>> {
         let db = ctx.data::<Database>()?;
-
-        if query.trim().is_empty() {
-            return Err("Search query cannot be empty".into());
-        }
-
         let notes = db.search_notes(&query).await?;
         Ok(notes)
     }
@@ -51,7 +48,7 @@ impl QueryRoot {
 
 #[Object]
 impl MutationRoot {
-    /// Create a new note with smart auto-title generation
+    /// 📝 Create note with smart auto-title generation (SINGLE IMPLEMENTATION)
     async fn create_note(&self, ctx: &Context<'_>, input: NoteInput) -> Result<Note> {
         if input.content.is_empty() {
             return Err(AppError::InvalidContent {
@@ -69,7 +66,7 @@ impl MutationRoot {
             }
         }
 
-        // 🌟 ENHANCED: Smart auto-title generation
+        // Smart auto-title generation
         let title = match input.title {
             Some(title) if !title.trim().is_empty() => title,
             _ => generate_smart_title(&input.content),
@@ -81,12 +78,14 @@ impl MutationRoot {
                 message: "Database connection not available".to_string(),
             })?;
 
+        // For now, create note without user authentication
+        // Later we'll switch to create_note_for_user when auth is fully implemented
         db.create_note(&title, &input.content)
             .await
             .map_err(Into::into)
     }
 
-    /// Update an existing note using your BRILLIANT 4-pattern logic!
+    /// 📝 Update note
     async fn update_note(
         &self,
         ctx: &Context<'_>,
@@ -94,20 +93,59 @@ impl MutationRoot {
         input: UpdateNoteInput,
     ) -> Result<Option<Note>> {
         let db = ctx.data::<Database>()?;
-
-        // Use your genius 4-pattern update logic!
         let note = db
             .update_note(&id, input.title.as_deref(), input.content.as_deref())
             .await?;
-
         Ok(note)
     }
 
-    /// Delete a note by ID
+    /// 🗑️ Delete note
     async fn delete_note(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let db = ctx.data::<Database>()?;
         let deleted = db.delete_note(&id).await?;
         Ok(deleted)
+    }
+
+    /// 🔐 Register a new user
+    async fn register(&self, ctx: &Context<'_>, input: RegisterInput) -> Result<AuthResponse> {
+        let db = ctx.data::<Database>()?;
+        let auth = ctx.data::<AuthService>()?;
+
+        // Create user
+        let user_row = db.create_user(&input, auth).await?;
+        let user = User::from(user_row.clone());
+
+        // Generate JWT token
+        let token = auth.generate_token(user_row.id, user_row.email)?;
+
+        Ok(AuthResponse { token, user })
+    }
+
+    /// 🔑 Login user
+    async fn login(&self, ctx: &Context<'_>, input: LoginInput) -> Result<AuthResponse> {
+        input.validate().map_err(|e| AppError::ValidationError {
+            message: format!("Validation failed: {}", e),
+        })?;
+
+        let db = ctx.data::<Database>()?;
+        let auth = ctx.data::<AuthService>()?;
+
+        // Get user by email
+        let user_row = db
+            .get_user_by_email(&input.email)
+            .await?
+            .ok_or(AppError::InvalidCredentials)?;
+
+        // Verify password
+        let is_valid = auth.verify_password(&input.password, &user_row.password_hash)?;
+        if !is_valid {
+            return Err(AppError::InvalidCredentials.into());
+        }
+
+        let user = User::from(user_row.clone());
+        let token = auth.generate_token(user_row.id, user_row.email)?;
+
+        Ok(AuthResponse { token, user })
     }
 }
 
@@ -121,10 +159,9 @@ fn generate_smart_title(content: &str) -> String {
         .next()
         .unwrap_or(content)
         .trim()
-        .replace('\n', " ")
-        .replace('\r', " ")
-        .replace('\t', " ")
-        // Normalize multiple spaces to single space
+        .replace('\n', " ") // ✅ Fixed: Use single quotes for char literals
+        .replace('\r', " ") // ✅ Fixed: Use single quotes for char literals
+        .replace('\t', " ") // ✅ Fixed: Use single quotes for char literals
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
@@ -133,23 +170,19 @@ fn generate_smart_title(content: &str) -> String {
         return "Untitled Note".to_string();
     }
 
-    // If content is already short enough, use as-is
     if cleaned.len() <= MAX_LENGTH {
         return cleaned;
     }
 
-    // Strategy 1: Find sentence boundary within limit
     if let Some(sentence_end) = find_sentence_boundary(&cleaned, MAX_LENGTH) {
         return cleaned[..sentence_end].trim().to_string();
     }
 
-    // Strategy 2: Find word boundary within limit
     if let Some(word_end) = find_word_boundary(&cleaned, MAX_LENGTH) {
         return format!("{}...", cleaned[..word_end].trim());
     }
 
-    // Strategy 3: Fallback - cut at character boundary with ellipsis
-    let mut end = MAX_LENGTH - 3; // Leave room for "..."
+    let mut end = MAX_LENGTH - 3;
     while end > 0 && !cleaned.is_char_boundary(end) {
         end -= 1;
     }
@@ -157,7 +190,6 @@ fn generate_smart_title(content: &str) -> String {
     format!("{}...", cleaned[..end].trim())
 }
 
-/// Find the best sentence boundary within the character limit
 fn find_sentence_boundary(text: &str, max_len: usize) -> Option<usize> {
     let search_area = &text[..max_len.min(text.len())];
     let mut best_pos = None;
@@ -165,7 +197,6 @@ fn find_sentence_boundary(text: &str, max_len: usize) -> Option<usize> {
     let mut current_quote = None;
 
     for (byte_pos, ch) in search_area.char_indices() {
-        // Handle quotes
         match ch {
             '"' | '\'' if !in_quotes => {
                 in_quotes = true;
@@ -178,15 +209,12 @@ fn find_sentence_boundary(text: &str, max_len: usize) -> Option<usize> {
             _ => {}
         }
 
-        // Look for sentence endings only when not in quotes
         if !in_quotes && matches!(ch, '.' | '!' | '?') {
             let end_pos = byte_pos + ch.len_utf8();
 
-            // Check if this is a valid sentence ending
             let is_valid = if end_pos >= search_area.len() {
-                true // End of text
+                true
             } else {
-                // Check what follows
                 search_area[end_pos..]
                     .chars()
                     .next()
@@ -203,12 +231,10 @@ fn find_sentence_boundary(text: &str, max_len: usize) -> Option<usize> {
     best_pos
 }
 
-/// Find the best word boundary within the character limit
 fn find_word_boundary(text: &str, max_len: usize) -> Option<usize> {
-    let min_length = max_len / 3; // Don't make title too short (at least 1/3 of max)
+    let min_length = max_len / 3;
 
-    // Find the last space before the limit
     text[..max_len.min(text.len())]
-        .rfind(' ') // ✅ Fixed: Use ' ' (char) for rfind, not " " (str)
+        .rfind(' ')
         .filter(|&pos| pos >= min_length)
 }

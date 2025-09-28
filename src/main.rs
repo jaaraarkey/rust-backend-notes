@@ -1,7 +1,7 @@
 //! # Notes App Backend - Pure Axum Implementation
 //!
 //! Bypassing async-graphql-axum to avoid version conflicts
-
+mod auth;
 mod database;
 mod errors;
 mod resolvers;
@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
+use auth::AuthService;
 use database::{create_database_pool, Database};
 use resolvers::{MutationRoot, QueryRoot};
 use web::{graphiql, graphql_handler, landing_page, AppSchema};
@@ -37,9 +38,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Database ready!");
 
+    let auth_service = AuthService::new();
+
     // Create GraphQL schema with EmptySubscription
     let schema: AppSchema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
         .data(db)
+        .data(auth_service)
         .finish();
 
     // Build application routes
