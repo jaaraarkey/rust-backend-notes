@@ -80,7 +80,7 @@ pub struct User {
 }
 
 /// Database user row helper
-#[derive(sqlx::FromRow, Clone)] // ✅ Added Clone derive
+#[derive(sqlx::FromRow, Clone)]
 pub struct UserRow {
     pub id: Uuid,
     pub email: String,
@@ -155,7 +155,7 @@ impl AuthService {
             })
     }
 
-    /// Extract user ID from authorization header token (simplified)
+    /// Extract user ID from authorization header token
     pub fn extract_user_id_from_token(&self, token: &str) -> AppResult<Uuid> {
         let claims = self.verify_token(token)?;
 

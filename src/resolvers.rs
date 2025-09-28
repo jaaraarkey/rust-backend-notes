@@ -8,7 +8,7 @@ use validator::Validate;
 
 use crate::auth::{AuthResponse, AuthService, LoginInput, RegisterInput, User};
 use crate::database::Database;
-use crate::errors::AppError;
+use crate::errors::{AppError, AppResult}; // ✅ Add AppResult import here
 use crate::types::{Note, NoteInput, UpdateNoteInput};
 
 pub struct QueryRoot;
@@ -50,6 +50,7 @@ impl QueryRoot {
 impl MutationRoot {
     /// 📝 Create note with smart auto-title generation (SINGLE IMPLEMENTATION)
     async fn create_note(&self, ctx: &Context<'_>, input: NoteInput) -> Result<Note> {
+        // Clean validation
         if input.content.is_empty() {
             return Err(AppError::InvalidContent {
                 message: "Content cannot be empty".to_string(),
@@ -57,14 +58,8 @@ impl MutationRoot {
             .into());
         }
 
-        if let Some(title) = &input.title {
-            if title.len() > 200 {
-                return Err(AppError::InvalidTitle {
-                    message: "Title too long (max 200 characters)".to_string(),
-                }
-                .into());
-            }
-        }
+        // Or even cleaner with custom validators:
+        validate_note_input(&input)?;
 
         // Smart auto-title generation
         let title = match input.title {
@@ -237,4 +232,23 @@ fn find_word_boundary(text: &str, max_len: usize) -> Option<usize> {
     text[..max_len.min(text.len())]
         .rfind(' ')
         .filter(|&pos| pos >= min_length)
+}
+
+// Helper validation functions
+fn validate_note_input(input: &NoteInput) -> AppResult<()> {
+    if input.content.is_empty() {
+        return Err(AppError::InvalidContent {
+            message: "Content cannot be empty".to_string(),
+        });
+    }
+
+    if let Some(title) = &input.title {
+        if title.len() > 200 {
+            return Err(AppError::InvalidTitle {
+                message: "Title too long (max 200 characters)".to_string(),
+            });
+        }
+    }
+
+    Ok(())
 }

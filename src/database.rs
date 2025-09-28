@@ -57,7 +57,7 @@ impl Database {
         Ok(())
     }
 
-    /// Create a new note in PostgreSQL (using regular query temporarily)
+    /// Create a new note in PostgreSQL
     pub async fn create_note(&self, title: &str, content: &str) -> AppResult<Note> {
         let uuid = Uuid::new_v4();
         let now = Utc::now();
