@@ -10,7 +10,7 @@ use validator::Validate;
 
 use crate::auth::{AuthService, RegisterInput, UserRow};
 use crate::errors::{AppError, AppResult};
-use crate::types::Note;
+use crate::types::{CreateFolderInput, Folder, Note, UpdateFolderInput}; // ✅ Add missing imports
 
 /// Internal row structure that matches the PostgreSQL schema
 #[derive(sqlx::FromRow)]
@@ -31,6 +31,105 @@ impl From<NoteRow> for Note {
             content: row.content,
             created_at: row.created_at.to_rfc3339(),
             updated_at: row.updated_at.to_rfc3339(),
+            // ✅ Add missing fields with default values for compatibility
+            is_pinned: false,
+            pinned_at: None,
+            view_count: 0,
+            word_count: 0,
+            folder: None,
+        }
+    }
+}
+
+/// Internal folder row structure
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct FolderRow {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub color: String,
+    pub icon: String,
+    pub user_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub position: i32,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Enhanced note row with folder information
+#[derive(sqlx::FromRow, Debug)]
+pub struct EnhancedNoteRow {
+    pub id: Uuid,
+    pub title: String,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub user_id: Option<Uuid>,
+    pub folder_id: Option<Uuid>,
+    pub is_pinned: bool,
+    pub pinned_at: Option<DateTime<Utc>>,
+    pub view_count: i32,
+    pub word_count: i32,
+    // Folder info (from JOIN)
+    pub folder_name: Option<String>,
+    pub folder_color: Option<String>,
+    pub folder_icon: Option<String>,
+}
+
+impl From<EnhancedNoteRow> for Note {
+    fn from(row: EnhancedNoteRow) -> Self {
+        let folder = if let (Some(folder_id), Some(folder_name)) =
+            (row.folder_id, row.folder_name.as_ref())
+        {
+            Some(Folder {
+                id: folder_id.to_string(),
+                name: folder_name.clone(),
+                description: None, // We'll load full folder details separately if needed
+                color: row.folder_color.unwrap_or_else(|| "#3B82F6".to_string()),
+                icon: row.folder_icon.unwrap_or_else(|| "folder".to_string()),
+                position: 0,
+                notes_count: 0,
+                is_default: false,          // Add this missing field
+                created_at: "".to_string(), // Placeholder for list view
+                updated_at: "".to_string(),
+                parent_folder: None,
+                subfolders: vec![],
+            })
+        } else {
+            None
+        };
+
+        Note {
+            id: row.id.to_string(),
+            title: row.title,
+            content: row.content,
+            created_at: row.created_at.to_rfc3339(),
+            updated_at: row.updated_at.to_rfc3339(),
+            is_pinned: row.is_pinned,
+            pinned_at: row.pinned_at.map(|dt| dt.to_rfc3339()),
+            view_count: row.view_count,
+            word_count: row.word_count,
+            folder,
+        }
+    }
+}
+
+impl From<FolderRow> for Folder {
+    fn from(row: FolderRow) -> Self {
+        Folder {
+            id: row.id.to_string(),
+            name: row.name,
+            description: row.description,
+            color: row.color,
+            icon: row.icon,
+            position: row.position,
+            notes_count: 0,             // Will be loaded separately
+            is_default: row.is_default, // Add this line
+            created_at: row.created_at.to_rfc3339(),
+            updated_at: row.updated_at.to_rfc3339(),
+            parent_folder: None, // Will be loaded separately if needed
+            subfolders: vec![],  // Will be loaded separately
         }
     }
 }
@@ -496,6 +595,343 @@ impl Database {
                     user_id: row.get("user_id"),
                 };
                 note_row.into()
+            })
+            .collect();
+
+        Ok(notes)
+    }
+
+    /// 📁 Create a new folder
+    pub async fn create_folder(
+        &self,
+        user_id: Uuid,
+        input: &CreateFolderInput,
+    ) -> AppResult<Folder> {
+        let folder_id = Uuid::new_v4();
+        let now = Utc::now();
+        let color = input.color.as_deref().unwrap_or("#3B82F6");
+        let icon = input.icon.as_deref().unwrap_or("folder");
+
+        let row = sqlx::query(
+            r#"
+            INSERT INTO folders (id, name, description, color, icon, user_id, parent_id, position, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, name, description, color, icon, user_id, parent_id, position, is_default, created_at, updated_at
+            "#,
+        )
+        .bind(folder_id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(color)
+        .bind(icon)
+        .bind(user_id)
+        .bind(None::<Uuid>) // parent_id for now
+        .bind(input.position.unwrap_or(0))
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to create folder: {}", e),
+        })?;
+
+        Ok(Folder {
+            id: row.get::<Uuid, _>("id").to_string(),
+            name: row.get("name"),
+            description: row.get("description"),
+            color: row.get("color"),
+            icon: row.get("icon"),
+            position: row.get("position"),
+            notes_count: 0,
+            is_default: row.get("is_default"), // Add this line
+            created_at: row.get::<DateTime<Utc>, _>("created_at").to_rfc3339(),
+            updated_at: row.get::<DateTime<Utc>, _>("updated_at").to_rfc3339(),
+            parent_folder: None,
+            subfolders: vec![],
+        })
+    }
+
+    /// 📁 Get user's folders with hierarchy
+    pub async fn get_user_folders(&self, user_id: Uuid) -> AppResult<Vec<Folder>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, name, description, color, icon, user_id, parent_id, position, is_default, created_at, updated_at
+            FROM folders
+            WHERE user_id = $1
+            ORDER BY parent_id NULLS FIRST, position ASC, name ASC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to fetch user folders: {}", e),
+        })?;
+
+        let folders: Vec<Folder> = rows
+            .into_iter()
+            .map(|row| Folder {
+                id: row.get::<Uuid, _>("id").to_string(),
+                name: row.get("name"),
+                description: row.get("description"),
+                color: row.get("color"),
+                icon: row.get("icon"),
+                position: row.get("position"),
+                notes_count: 0,                    // We'll load this separately
+                is_default: row.get("is_default"), // Add this line
+                created_at: row.get::<DateTime<Utc>, _>("created_at").to_rfc3339(),
+                updated_at: row.get::<DateTime<Utc>, _>("updated_at").to_rfc3339(),
+                parent_folder: None,
+                subfolders: vec![],
+            })
+            .collect();
+
+        Ok(folders)
+    }
+
+    /// 📁 Get folder by ID with full details
+    pub async fn get_folder_by_id(
+        &self,
+        folder_id: Uuid,
+        user_id: Uuid,
+    ) -> AppResult<Option<Folder>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, name, description, color, icon, user_id, parent_id, position, is_default, created_at, updated_at
+            FROM folders
+            WHERE id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(folder_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to fetch folder: {}", e),
+        })?;
+
+        match row {
+            Some(row) => Ok(Some(Folder {
+                id: row.get::<Uuid, _>("id").to_string(),
+                name: row.get("name"),
+                description: row.get("description"),
+                color: row.get("color"),
+                icon: row.get("icon"),
+                position: row.get("position"),
+                notes_count: 0,                    // Load separately if needed
+                is_default: row.get("is_default"), // Add this line
+                created_at: row.get::<DateTime<Utc>, _>("created_at").to_rfc3339(),
+                updated_at: row.get::<DateTime<Utc>, _>("updated_at").to_rfc3339(),
+                parent_folder: None,
+                subfolders: vec![],
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// 📁 Update folder (simplified)
+    pub async fn update_folder(
+        &self,
+        folder_id: Uuid,
+        user_id: Uuid,
+        input: &UpdateFolderInput,
+    ) -> AppResult<Option<Folder>> {
+        // Simple update - just name for now
+        if let Some(name) = &input.name {
+            sqlx::query(
+                "UPDATE folders SET name = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
+            )
+            .bind(name)
+            .bind(folder_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError {
+                message: format!("Failed to update folder: {}", e),
+            })?;
+        }
+
+        // Return updated folder
+        self.get_folder_by_id(folder_id, user_id).await
+    }
+
+    /// 📁 Delete folder (simplified)
+    pub async fn delete_folder(
+        &self,
+        folder_id: Uuid,
+        user_id: Uuid,
+        _move_notes_to: Option<Uuid>,
+    ) -> AppResult<bool> {
+        let result = sqlx::query("DELETE FROM folders WHERE id = $1 AND user_id = $2")
+            .bind(folder_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError {
+                message: format!("Failed to delete folder: {}", e),
+            })?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// 📝 Enhanced note creation with folder support (simplified)
+    pub async fn create_note_with_folder(
+        &self,
+        user_id: Uuid,
+        title: &str,
+        content: &str,
+        folder_id: Option<Uuid>,
+        is_pinned: bool,
+    ) -> AppResult<Note> {
+        let note_id = Uuid::new_v4();
+        let now = Utc::now();
+        let pinned_at = if is_pinned { Some(now) } else { None };
+
+        let row = sqlx::query(
+            r#"
+            INSERT INTO notes (id, user_id, title, content, folder_id, is_pinned, pinned_at, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, title, content, created_at, updated_at, user_id, folder_id, is_pinned, pinned_at, view_count, word_count
+            "#,
+        )
+        .bind(note_id)
+        .bind(user_id)
+        .bind(title)
+        .bind(content)
+        .bind(folder_id)
+        .bind(is_pinned)
+        .bind(pinned_at)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to create note: {}", e),
+        })?;
+
+        Ok(Note {
+            id: row.get::<Uuid, _>("id").to_string(),
+            title: row.get("title"),
+            content: row.get("content"),
+            created_at: row.get::<DateTime<Utc>, _>("created_at").to_rfc3339(),
+            updated_at: row.get::<DateTime<Utc>, _>("updated_at").to_rfc3339(),
+            is_pinned: row.get("is_pinned"),
+            pinned_at: row
+                .get::<Option<DateTime<Utc>>, _>("pinned_at")
+                .map(|dt| dt.to_rfc3339()),
+            view_count: row.get("view_count"),
+            word_count: row.get("word_count"),
+            folder: None, // Load separately if needed
+        })
+    }
+
+    /// 📚 Get notes in a specific folder (simplified)
+    pub async fn get_notes_in_folder(
+        &self,
+        user_id: Uuid,
+        folder_id: Option<Uuid>,
+    ) -> AppResult<Vec<Note>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, title, content, created_at, updated_at, user_id, folder_id, 
+                   is_pinned, pinned_at, view_count, word_count
+            FROM notes
+            WHERE user_id = $1 AND ($2::UUID IS NULL AND folder_id IS NULL OR folder_id = $2)
+            ORDER BY is_pinned DESC, updated_at DESC, created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .bind(folder_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to fetch notes in folder: {}", e),
+        })?;
+
+        let notes: Vec<Note> = rows
+            .into_iter()
+            .map(|row| Note {
+                id: row.get::<Uuid, _>("id").to_string(),
+                title: row.get("title"),
+                content: row.get("content"),
+                created_at: row.get::<DateTime<Utc>, _>("created_at").to_rfc3339(),
+                updated_at: row.get::<DateTime<Utc>, _>("updated_at").to_rfc3339(),
+                is_pinned: row.get("is_pinned"),
+                pinned_at: row
+                    .get::<Option<DateTime<Utc>>, _>("pinned_at")
+                    .map(|dt| dt.to_rfc3339()),
+                view_count: row.get("view_count"),
+                word_count: row.get("word_count"),
+                folder: None, // Simplify for now
+            })
+            .collect();
+
+        Ok(notes)
+    }
+
+    /// ⭐ Pin/unpin a note (simplified)
+    pub async fn toggle_note_pin(
+        &self,
+        note_id: Uuid,
+        user_id: Uuid,
+        pin: bool,
+    ) -> AppResult<Option<Note>> {
+        let pinned_at = if pin { Some(Utc::now()) } else { None };
+
+        let rows_affected = sqlx::query(
+            "UPDATE notes SET is_pinned = $1, pinned_at = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4"
+        )
+        .bind(pin)
+        .bind(pinned_at)
+        .bind(note_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to toggle note pin: {}", e),
+        })?
+        .rows_affected();
+
+        if rows_affected > 0 {
+            self.get_note_by_id(&note_id.to_string()).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// ⭐ Get pinned notes for user (simplified)
+    pub async fn get_pinned_notes(&self, user_id: Uuid) -> AppResult<Vec<Note>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, title, content, created_at, updated_at, user_id, folder_id,
+                   is_pinned, pinned_at, view_count, word_count
+            FROM notes
+            WHERE user_id = $1 AND is_pinned = TRUE
+            ORDER BY pinned_at DESC, updated_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to fetch pinned notes: {}", e),
+        })?;
+
+        let notes: Vec<Note> = rows
+            .into_iter()
+            .map(|row| Note {
+                id: row.get::<Uuid, _>("id").to_string(),
+                title: row.get("title"),
+                content: row.get("content"),
+                created_at: row.get::<DateTime<Utc>, _>("created_at").to_rfc3339(),
+                updated_at: row.get::<DateTime<Utc>, _>("updated_at").to_rfc3339(),
+                is_pinned: row.get("is_pinned"),
+                pinned_at: row
+                    .get::<Option<DateTime<Utc>>, _>("pinned_at")
+                    .map(|dt| dt.to_rfc3339()),
+                view_count: row.get("view_count"),
+                word_count: row.get("word_count"),
+                folder: None,
             })
             .collect();
 

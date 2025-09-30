@@ -3,6 +3,7 @@
 //! This module implements resolvers with JWT-based authentication
 
 use async_graphql::{Context, EmptySubscription, Object, Result};
+use uuid; // Add this import
 use validator::Validate;
 
 use crate::auth::{
@@ -10,7 +11,10 @@ use crate::auth::{
 };
 use crate::database::Database;
 use crate::errors::{AppError, AppResult};
-use crate::types::{Note, NoteInput, UpdateNoteInput};
+use crate::types::{
+    CreateFolderInput, Folder, MoveToFolderInput, Note, NoteInput, UpdateFolderInput,
+    UpdateNoteInput,
+};
 
 pub struct QueryRoot;
 pub struct MutationRoot;
@@ -51,7 +55,7 @@ impl QueryRoot {
 
     /// 🔍 Get note by ID (user-specific)
     async fn note(&self, ctx: &Context<'_>, id: String) -> Result<Option<Note>> {
-        let (user_id, _user) = require_auth(ctx)?;
+        let (_user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
 
         // First check if note exists and belongs to user
@@ -66,7 +70,7 @@ impl QueryRoot {
 
     /// 🔎 Search user's notes with full-text search (authenticated)
     async fn search_notes(&self, ctx: &Context<'_>, query: String) -> Result<Vec<Note>> {
-        let (user_id, _user) = require_auth(ctx)?;
+        let (_user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
 
         // Search only user's notes (when implemented)
@@ -78,6 +82,51 @@ impl QueryRoot {
     async fn me(&self, ctx: &Context<'_>) -> Result<User> {
         let (_user_id, user) = require_auth(ctx)?;
         Ok(User::from(user.clone()))
+    }
+
+    /// 📁 Get user's folders
+    async fn folders(&self, ctx: &Context<'_>) -> Result<Vec<Folder>> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        let folders = db.get_user_folders(user_id).await?;
+        Ok(folders)
+    }
+
+    /// 📁 Get folder by ID
+    async fn folder(&self, ctx: &Context<'_>, id: String) -> Result<Option<Folder>> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        // Parse string ID to UUID
+        let folder_uuid =
+            uuid::Uuid::parse_str(&id).map_err(|_| AppError::InvalidUuid { uuid: id.clone() })?;
+
+        let folder = db.get_folder_by_id(folder_uuid, user_id).await?;
+        Ok(folder)
+    }
+
+    /// 📋 Get notes in a folder
+    async fn notes_in_folder(&self, ctx: &Context<'_>, folder_id: String) -> Result<Vec<Note>> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        // Parse string ID to UUID
+        let folder_uuid = uuid::Uuid::parse_str(&folder_id).map_err(|_| AppError::InvalidUuid {
+            uuid: folder_id.clone(),
+        })?;
+
+        let notes = db.get_notes_in_folder(user_id, Some(folder_uuid)).await?;
+        Ok(notes)
+    }
+
+    /// 📌 Get pinned notes
+    async fn pinned_notes(&self, ctx: &Context<'_>) -> Result<Vec<Note>> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        let notes = db.get_pinned_notes(user_id).await?;
+        Ok(notes)
     }
 }
 
@@ -128,7 +177,7 @@ impl MutationRoot {
         id: String,
         input: UpdateNoteInput,
     ) -> Result<Option<Note>> {
-        let (user_id, _user) = require_auth(ctx)?;
+        let (_user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
 
         // TODO: Verify note belongs to user before updating
@@ -140,7 +189,7 @@ impl MutationRoot {
 
     /// 🗑️ Delete user's note
     async fn delete_note(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        let (user_id, _user) = require_auth(ctx)?;
+        let (_user_id, _user) = require_auth(ctx)?;
         let db = ctx.data::<Database>()?;
 
         // TODO: Verify note belongs to user before deleting
@@ -188,6 +237,113 @@ impl MutationRoot {
         let token = auth.generate_token(user_row.id, user_row.email)?;
 
         Ok(AuthResponse { token, user })
+    }
+
+    /// 📁 Create a new folder
+    async fn create_folder(&self, ctx: &Context<'_>, input: CreateFolderInput) -> Result<Folder> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        let folder = db.create_folder(user_id, &input).await?;
+        Ok(folder)
+    }
+
+    /// 📁 Update a folder
+    async fn update_folder(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        input: UpdateFolderInput,
+    ) -> Result<Option<Folder>> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        // Parse string ID to UUID
+        let folder_uuid =
+            uuid::Uuid::parse_str(&id).map_err(|_| AppError::InvalidUuid { uuid: id.clone() })?;
+
+        let folder = db.update_folder(folder_uuid, user_id, &input).await?;
+        Ok(folder)
+    }
+
+    /// 🗑️ Delete a folder
+    async fn delete_folder(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        // Parse string ID to UUID
+        let folder_uuid =
+            uuid::Uuid::parse_str(&id).map_err(|_| AppError::InvalidUuid { uuid: id.clone() })?;
+
+        let deleted = db.delete_folder(folder_uuid, user_id, None).await?;
+        Ok(deleted)
+    }
+
+    /// 📌 Toggle note pin status
+    async fn toggle_note_pin(&self, ctx: &Context<'_>, note_id: String) -> Result<Note> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        // Parse string ID to UUID
+        let note_uuid = uuid::Uuid::parse_str(&note_id).map_err(|_| AppError::InvalidUuid {
+            uuid: note_id.clone(),
+        })?;
+
+        let note = db.toggle_note_pin(note_uuid, user_id, true).await?;
+
+        // Handle the Option<Note> return type
+        note.ok_or_else(|| AppError::UserNotFound.into())
+    }
+
+    /// 📂 Move note to folder
+    async fn move_note_to_folder(
+        &self,
+        ctx: &Context<'_>,
+        note_id: String,
+        input: MoveToFolderInput,
+    ) -> Result<Note> {
+        let (user_id, _user) = require_auth(ctx)?;
+        let db = ctx.data::<Database>()?;
+
+        // Parse note ID to UUID (prefix with underscore to indicate intentionally unused)
+        let _note_uuid = uuid::Uuid::parse_str(&note_id).map_err(|_| AppError::InvalidUuid {
+            uuid: note_id.clone(),
+        })?;
+
+        // Parse folder ID to UUID if provided
+        let folder_uuid = if let Some(folder_id) = &input.target_folder_id {
+            Some(
+                uuid::Uuid::parse_str(folder_id).map_err(|_| AppError::InvalidUuid {
+                    uuid: folder_id.clone(),
+                })?,
+            )
+        } else {
+            None
+        };
+
+        // Use create_note_with_folder method to move the note
+        // First get the existing note
+        let existing_note = db
+            .get_note_by_id(&note_id)
+            .await?
+            .ok_or(AppError::UserNotFound)?;
+
+        // Create a new note in the target folder with the same content
+        // The 5th parameter is `is_pinned: bool`
+        let note = db
+            .create_note_with_folder(
+                user_id,
+                &existing_note.title,
+                &existing_note.content,
+                folder_uuid,
+                existing_note.is_pinned, // Use existing pin status
+            )
+            .await?;
+
+        // Delete the old note
+        db.delete_note(&note_id).await?;
+
+        Ok(note)
     }
 }
 
