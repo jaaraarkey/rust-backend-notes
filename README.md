@@ -1,8 +1,8 @@
-# 🚀 Smart Notes GraphQL API with JWT Authentication
+# 🚀 Smart Notes API - Complete GraphQL Backend
 
-A production-ready GraphQL API built with Rust, featuring JWT authentication, PostgreSQL database, and intelligent note management with auto-title generation.
+A sophisticated note-taking API built with **Rust**, **GraphQL**, **PostgreSQL**, and **JWT Authentication**. Features advanced folder organization, full-text search, and AI-powered auto-title generation.
 
-## ✨ Features
+## ✨ **Features**
 
 ### 🔐 **Authentication & Security**
 - **JWT-based authentication** with 24-hour token validity
@@ -17,12 +17,21 @@ A production-ready GraphQL API built with Rust, featuring JWT authentication, Po
 - **Connection pooling** for optimal performance
 - **ACID compliance** for data integrity
 
+### 📁 **Advanced Folder System**
+- **Hierarchical folders** - Organize notes with parent/child relationships
+- **Folder customization** - Colors, icons, and descriptions
+- **Smart organization** - Default folders for new users
+- **Folder statistics** - Note counts and activity tracking
+- **Drag & drop support** - Move notes between folders seamlessly
+
 ### 🎯 **Smart Note Management**
 - **Intelligent auto-title generation** from content analysis
+- **Pinned notes** - Mark important notes for quick access
 - **Full-text search** powered by PostgreSQL
 - **User-specific notes** with proper isolation
 - **Content validation** and sanitization
 - **Timestamp tracking** for creation and updates
+- **Word count & analytics** - Automatic content analysis
 
 ### 🌐 **Modern API Design**
 - **GraphQL API** with async-graphql for type-safe operations
@@ -34,15 +43,15 @@ A production-ready GraphQL API built with Rust, featuring JWT authentication, Po
 ## 🏗️ **Architecture**
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   GraphQL API   │────│ JWT Middleware  │────│  PostgreSQL DB  │
-│  (async-graphql)│    │   (Auth Layer)  │    │   (SQLx Pool)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ├── Query Resolvers     ├── Token Verification  ├── User Management
-         ├── Mutation Resolvers  ├── User Context       ├── Note Storage
-         ├── Schema Generation   ├── Route Protection   ├── Full-text Search
-         └── Error Handling      └── Auth Context       └── Migrations
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   GraphQL API   │────│  Rust Backend    │────│   PostgreSQL    │
+│   (Port 8000)   │    │  (Authentication)│    │   (Port 5433)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                        │                        │
+    ┌─────────┐             ┌──────────┐            ┌─────────────┐
+    │GraphiQL │             │   JWT    │            │  Migrations │
+    │Explorer │             │ Tokens   │            │   & Schema  │
+    └─────────┘             └──────────┘            └─────────────┘
 ```
 
 ## 🚦 **Quick Start**
@@ -130,12 +139,14 @@ mutation LoginUser {
 ```
 
 ### **3. Use JWT Token for Authenticated Requests**
-Add to your request headers:
-```
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Add to your request headers in GraphiQL:
+```json
+{
+  "Authorization": "Bearer YOUR_JWT_TOKEN_HERE"
+}
 ```
 
-## 📝 **API Examples**
+## 📖 **GraphQL API Documentation**
 
 ### **🔓 Public Operations (No Auth Required)**
 
@@ -160,6 +171,23 @@ mutation {
 }
 ```
 
+#### **Login User**  
+```graphql
+mutation {
+  login(input: {
+    email: "user@example.com"
+    password: "securepassword123"
+  }) {
+    token
+    user {
+      id
+      email
+      fullName
+    }
+  }
+}
+```
+
 ### **🔐 Authenticated Operations (JWT Token Required)**
 
 #### **Get Current User Profile**
@@ -176,42 +204,167 @@ query {
 }
 ```
 
-#### **Create Smart Note**
+---
+
+### **📁 Folder Management**
+
+#### **Create Folder**
 ```graphql
 mutation {
-  createNote(input: {
-    content: "This is my note content. The system will automatically generate a smart title from this content using advanced text analysis algorithms."
+  createFolder(input: {
+    name: "Work Projects"
+    description: "All my work-related notes and documentation"
+    color: "#3B82F6"
+    icon: "briefcase"
+    position: 1
   }) {
     id
-    title          # Auto-generated intelligent title
-    content
+    name
+    description
+    color
+    icon
+    position
+    isDefault
     createdAt
     updatedAt
   }
 }
 ```
 
-#### **Get User's Notes**
+#### **Get All User Folders**
+```graphql
+query {
+  folders {
+    id
+    name
+    description
+    color
+    icon
+    position
+    notesCount
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+```
+
+#### **Get Specific Folder**
+```graphql
+query {
+  folder(id: "123e4567-e89b-12d3-a456-426614174000") {
+    id
+    name
+    description
+    color
+    icon
+    notesCount
+    isDefault
+    subfolders {
+      id
+      name
+      color
+    }
+  }
+}
+```
+
+#### **Update Folder**
+```graphql
+mutation {
+  updateFolder(
+    id: "123e4567-e89b-12d3-a456-426614174000"
+    input: {
+      name: "Updated Project Name"
+      description: "New description"
+      color: "#10B981"
+      icon: "star"
+      position: 2
+    }
+  ) {
+    id
+    name
+    description
+    color
+    icon
+    position
+    updatedAt
+  }
+}
+```
+
+#### **Delete Folder**
+```graphql
+mutation {
+  deleteFolder(id: "123e4567-e89b-12d3-a456-426614174000")
+}
+```
+
+---
+
+### **📝 Note Management**
+
+#### **Create Note**
+```graphql
+mutation {
+  createNote(input: {
+    content: "This is my first Smart Note! It supports **markdown** formatting and automatic title generation."
+    title: "My First Note"
+    folderId: "123e4567-e89b-12d3-a456-426614174000"
+    isPinned: false
+  }) {
+    id
+    title
+    content
+    folderId
+    isPinned
+    wordCount
+    viewCount
+    createdAt
+    updatedAt
+    folder {
+      id
+      name
+      color
+    }
+  }
+}
+```
+
+#### **Create Note with Auto-Title**
+```graphql
+mutation {
+  createNote(input: {
+    content: "Meeting notes from today's sprint planning. Discussed new features for the Smart Notes API including folder hierarchies and advanced search capabilities."
+  }) {
+    id
+    title  # Will be auto-generated: "Meeting notes from today's sprint planning..."
+    content
+    wordCount
+    createdAt
+  }
+}
+```
+
+#### **Get All User Notes**
 ```graphql
 query {
   notes {
     id
     title
     content
+    isPinned
+    pinnedAt
+    wordCount
+    viewCount
     createdAt
     updatedAt
-  }
-}
-```
-
-#### **Search Notes**
-```graphql
-query {
-  searchNotes(query: "algorithm") {
-    id
-    title
-    content
-    createdAt
+    folder {
+      id
+      name
+      color
+      icon
+    }
   }
 }
 ```
@@ -222,14 +375,15 @@ mutation {
   updateNote(
     id: "note-uuid-here"
     input: {
-      title: "Updated Title"
-      content: "Updated content with new information."
+      title: "Updated Note Title"
+      content: "Updated content with new information and insights."
     }
   ) {
     id
     title
     content
     updatedAt
+    wordCount
   }
 }
 ```
@@ -238,6 +392,169 @@ mutation {
 ```graphql
 mutation {
   deleteNote(id: "note-uuid-here")
+}
+```
+
+---
+
+### **📌 Note Organization**
+
+#### **Pin/Unpin Note**
+```graphql
+mutation {
+  toggleNotePin(noteId: "note-uuid-here") {
+    id
+    title
+    isPinned
+    pinnedAt
+  }
+}
+```
+
+#### **Get Pinned Notes**
+```graphql
+query {
+  pinnedNotes {
+    id
+    title
+    content
+    isPinned
+    pinnedAt
+    folder {
+      name
+      color
+    }
+  }
+}
+```
+
+#### **Move Note to Folder**
+```graphql
+mutation {
+  moveNoteToFolder(
+    noteId: "note-uuid-here"
+    input: {
+      targetFolderId: "folder-uuid-here"
+      position: 1
+    }
+  ) {
+    id
+    title
+    folderId
+    folder {
+      id
+      name
+      color
+    }
+  }
+}
+```
+
+#### **Get Notes in Folder**
+```graphql
+query {
+  notesInFolder(folderId: "folder-uuid-here") {
+    id
+    title
+    content
+    isPinned
+    wordCount
+    createdAt
+    folder {
+      name
+      color
+    }
+  }
+}
+```
+
+---
+
+### **🔍 Search & Discovery**
+
+#### **Search Notes**
+```graphql
+query {
+  searchNotes(query: "GraphQL API development") {
+    id
+    title
+    content
+    wordCount
+    createdAt
+    folder {
+      name
+      color
+    }
+  }
+}
+```
+
+#### **Complex Search Examples**
+```graphql
+# Search for notes containing "rust" and "graphql"
+query {
+  searchNotes(query: "rust graphql") {
+    id
+    title
+    # Highlights matching terms
+    content
+    folder { name }
+  }
+}
+
+# Search in specific topics
+query {
+  searchNotes(query: "postgresql database optimization") {
+    id
+    title
+    content
+    wordCount
+    viewCount
+  }
+}
+```
+
+---
+
+### **🎯 Advanced Queries**
+
+#### **Dashboard Overview**
+```graphql
+query {
+  # Get user profile
+  me {
+    id
+    email
+    fullName
+  }
+  
+  # Get folder structure
+  folders {
+    id
+    name
+    color
+    notesCount
+    isDefault
+  }
+  
+  # Get recent notes
+  notes {
+    id
+    title
+    createdAt
+    isPinned
+    folder {
+      name
+      color
+    }
+  }
+  
+  # Get pinned notes
+  pinnedNotes {
+    id
+    title
+    pinnedAt
+  }
 }
 ```
 
@@ -274,25 +591,6 @@ ORDER BY ts_rank(to_tsvector('english', title || ' ' || content),
                  plainto_tsquery('english', $1)) DESC;
 ```
 
-## 🛡️ **Security Features**
-
-### **Password Security**
-- **bcrypt hashing** with automatic salt generation
-- **Configurable cost factor** (default: 12)
-- **Timing attack prevention** through constant-time comparison
-
-### **JWT Security**
-- **HMAC-SHA256 signing** with secret key
-- **Configurable expiration** (default: 24 hours)
-- **Automatic token validation** on every request
-- **User context extraction** from valid tokens
-
-### **Input Validation**
-- **Email format validation** using regex patterns
-- **Password strength requirements** (minimum 8 characters)
-- **Content sanitization** to prevent injection attacks
-- **UUID validation** for all ID parameters
-
 ## 📊 **Database Schema**
 
 ### **Users Table**
@@ -308,20 +606,52 @@ CREATE TABLE users (
 );
 ```
 
+### **Folders Table**
+```sql
+CREATE TABLE folders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    description TEXT,
+    color TEXT NOT NULL DEFAULT '#3B82F6',
+    icon TEXT NOT NULL DEFAULT 'folder',
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_id UUID REFERENCES folders(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
 ### **Notes Table**
 ```sql
 CREATE TABLE notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
     content TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    folder_id UUID REFERENCES folders(id) ON DELETE SET NULL,
+    is_pinned BOOLEAN DEFAULT FALSE,
+    pinned_at TIMESTAMPTZ,
+    view_count INTEGER DEFAULT 0,
+    word_count INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    user_id UUID REFERENCES users(id)
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Full-text search index
+-- Indexes for performance
 CREATE INDEX notes_search_idx ON notes 
 USING GIN (to_tsvector('english', title || ' ' || content));
+CREATE INDEX notes_user_id_idx ON notes (user_id);
+CREATE INDEX notes_folder_id_idx ON notes (folder_id);
+CREATE INDEX folders_user_id_idx ON folders (user_id);
+```
+
+### **Key Relationships**
+```sql
+users (1) ────────── (∞) folders
+folders (1) ────────── (∞) notes
+folders (1) ────────── (∞) folders (hierarchy)
 ```
 
 ## 🚀 **Performance Features**
@@ -340,6 +670,25 @@ USING GIN (to_tsvector('english', title || ' ' || content));
 - **Prepared statements** for SQL injection prevention
 - **Indexed searches** for fast full-text queries
 - **Efficient pagination** support (ready for implementation)
+
+## 🛡️ **Security Features**
+
+### **Password Security**
+- **bcrypt hashing** with automatic salt generation
+- **Configurable cost factor** (default: 12)
+- **Timing attack prevention** through constant-time comparison
+
+### **JWT Security**
+- **HMAC-SHA256 signing** with secret key
+- **Configurable expiration** (default: 24 hours)
+- **Automatic token validation** on every request
+- **User context extraction** from valid tokens
+
+### **Input Validation**
+- **Email format validation** using regex patterns
+- **Password strength requirements** (minimum 8 characters)
+- **Content sanitization** to prevent injection attacks
+- **UUID validation** for all ID parameters
 
 ## 🧪 **Testing Your API**
 
@@ -379,12 +728,20 @@ backend/
 │   ├── database.rs          # PostgreSQL operations & migrations
 │   ├── errors.rs            # Comprehensive error handling
 │   ├── resolvers.rs         # GraphQL query/mutation resolvers
-│   ├── types.rs             # GraphQL schema types
-│   └── web.rs               # Web handlers & GraphiQL interface
+│   ├── types.rs             # GraphQL schema types & folder definitions
+│   ├── web.rs               # Web handlers & GraphiQL interface
+│   └── validation.rs        # Input validation & sanitization
 ├── migrations/              # Database migration files
+│   ├── 20250928144430_create_notes_table.sql
+│   ├── 20250928155448_create_users_table.sql
+│   └── 20250930000001_folders_system.sql
 ├── Cargo.toml              # Rust dependencies & metadata
 ├── .env                    # Environment variables (create manually)
-└── README.md               # This documentation
+├── README.md               # This comprehensive documentation
+├── GRAPHQL EXAMPLES.md     # Extended GraphQL query examples
+├── CONTRIBUTING.md         # Contribution guidelines
+├── CHANGELOG.md            # Version history and roadmap
+└── LICENSE                 # MIT License
 ```
 
 ## ⚙️ **Configuration**
@@ -401,6 +758,17 @@ backend/
 - **Algorithm**: HMAC-SHA256
 - **Refresh**: Manual (implement refresh tokens for production)
 
+## 🎸🔥💙 **What You've Built**
+
+Your Smart Notes API is now a **production-ready GraphQL backend** with:
+
+✅ **Complete Folder System** - Hierarchical organization with parent/child relationships  
+✅ **Advanced Note Features** - Pinning, word count, view tracking, folder assignment  
+✅ **JWT Authentication** - Secure user registration, login, and session management  
+✅ **PostgreSQL Database** - Full-featured with migrations and proper indexing  
+✅ **GraphQL API** - Type-safe with interactive playground  
+✅ **Smart Features** - Auto-title generation, full-text search capabilities  
+
 ## 🏆 **Production Readiness**
 
 ### **✅ Implemented**
@@ -410,6 +778,8 @@ backend/
 - Input validation and sanitization
 - Auto-generated API documentation
 - CORS support for cross-origin requests
+- Complete folder management system
+- Advanced note organization features
 
 ### **🚧 Recommended for Production**
 - [ ] Rate limiting middleware
@@ -432,7 +802,7 @@ backend/
 
 ## 📄 **License**
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙋‍♂️ **Support**
 
@@ -444,4 +814,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 **🎸🔥💙 Built with Rust, PostgreSQL, GraphQL, and pure genius!**
 
-*Smart Notes API - Where intelligent note-taking meets production-ready architecture.*
+*Smart Notes API - Where intelligent note-taking meets production-ready architecture with advanced folder management.*
